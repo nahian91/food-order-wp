@@ -1,77 +1,99 @@
 <?php
+if (!defined('ABSPATH')) exit;
+
 /*--------------------------------------------------------------
-# Professional Customers Tab - Default WP Admin Layout
+# View Registered Users and Their Orders - Procedural
 --------------------------------------------------------------*/
-if(!class_exists('FD_Customers_List_Table')){
-    require_once ABSPATH.'wp-admin/includes/class-wp-list-table.php';
+function fd_customers_tab() {
 
-    class FD_Customers_List_Table extends WP_List_Table {
-        function __construct(){
-            parent::__construct(['singular'=>'food_customer','plural'=>'food_customers','ajax'=>false]);
+    // View single customer details
+    if (isset($_GET['view'])) {
+        $user_id = intval($_GET['view']);
+        $user = get_userdata($user_id);
+        if (!$user) return;
+
+        // Get user orders
+        $orders = get_posts([
+            'post_type' => 'food_order',
+            'meta_key' => 'customer_id',
+            'meta_value' => $user_id,
+            'numberposts' => -1
+        ]);
+
+        echo '<div class="wrap"><h2>Customer #'.$user->ID.' Details</h2>';
+        echo '<p><strong>Name:</strong> '.esc_html($user->display_name).'</p>';
+        echo '<p><strong>Email:</strong> '.esc_html($user->user_email).'</p>';
+        echo '<p><strong>Role:</strong> '.implode(', ', $user->roles).'</p>';
+
+        echo '<h3>Orders</h3>';
+        if ($orders) {
+            echo '<table class="wp-list-table widefat fixed striped">';
+            echo '<thead><tr><th>Order ID</th><th>Total</th><th>Status</th><th>Date</th><th>View</th></tr></thead>';
+            echo '<tbody>';
+            foreach ($orders as $o) {
+                $status = get_post_meta($o->ID,'status',true) ?: 'Pending';
+                $total = get_post_meta($o->ID,'total_price',true) ?: 0;
+                echo '<tr>';
+                echo '<td>#'.$o->ID.'</td>';
+                echo '<td>'.get_option('fd_currency','৳').number_format($total,2).'</td>';
+                echo '<td>'.ucfirst($status).'</td>';
+                echo '<td>'.get_the_date('Y-m-d H:i',$o->ID).'</td>';
+                echo '<td><a href="?page=fd_orders&view='.$o->ID.'">View</a></td>';
+                echo '</tr>';
+            }
+            echo '</tbody></table>';
+        } else {
+            echo '<p>No orders yet.</p>';
         }
 
-        function get_columns(){
-            return [
-                'cb'=>'<input type="checkbox"/>',
-                'id'=>'ID',
-                'name'=>'Name',
-                'email'=>'Email',
-                'phone'=>'Phone',
-                'total_orders'=>'Total Orders'
-            ];
-        }
-
-        function column_cb($item){ return sprintf('<input type="checkbox" name="customer[]" value="%s"/>',$item->ID); }
-
-        function column_id($item){ return $item->ID; }
-
-        function column_name($item){ return $item->post_title; }
-
-        function column_email($item){ return get_post_meta($item->ID,'email',true) ?: '-'; }
-
-        function column_phone($item){ return get_post_meta($item->ID,'phone',true) ?: '-'; }
-
-        function column_total_orders($item){
-            $orders = get_posts(['post_type'=>'food_order','meta_key'=>'customer_id','meta_value'=>$item->ID,'numberposts'=>-1]);
-            return count($orders);
-        }
-
-        function prepare_items(){
-            $columns = $this->get_columns();
-            $hidden = [];
-            $sortable = [];
-            $this->_column_headers = [$columns,$hidden,$sortable];
-
-            $per_page = 20;
-            $current_page = $this->get_pagenum();
-            $total_items = wp_count_posts('food_customer')->publish;
-
-            $this->items = get_posts([
-                'post_type'=>'food_customer',
-                'numberposts'=>$per_page,
-                'offset'=>($current_page-1)*$per_page
-            ]);
-
-            $this->set_pagination_args([
-                'total_items'=>$total_items,
-                'per_page'=>$per_page
-            ]);
-        }
+        echo '<p><a href="?page=fd_customers">Back to Customers</a></p></div>';
+        return;
     }
-}
 
-/*--------------------------------------------------------------
-# Display Customers Tab
---------------------------------------------------------------*/
-function fd_customers_tab(){
-    echo '<div class="wrap">';
-    echo '<h1 class="wp-heading-inline">Customers</h1>';
+    // Default: list all registered users
+    $all_users = get_users();
+    $per_page = 20;
+    $current_page = isset($_GET['paged']) ? max(1,intval($_GET['paged'])) : 1;
+    $total_items = count($all_users);
+    $users = array_slice($all_users, ($current_page-1)*$per_page, $per_page);
 
-    $table = new FD_Customers_List_Table();
-    $table->prepare_items();
-    echo '<form method="post"><input type="hidden" name="page" value="food_delivery"/>';
-    $table->display();
-    echo '</form>';
+    echo '<div class="wrap"><h1 class="wp-heading-inline">Customers</h1>';
+    echo '<table class="wp-list-table widefat fixed striped">';
+    echo '<thead><tr>';
+    echo '<th>ID</th><th>Name</th><th>Email</th><th>Role</th><th>Total Orders</th><th>Actions</th>';
+    echo '</tr></thead>';
+    echo '<tbody>';
+
+    foreach ($users as $user) {
+        $orders = get_posts([
+            'post_type' => 'food_order',
+            'meta_key' => 'customer_id',
+            'meta_value' => $user->ID,
+            'numberposts' => -1
+        ]);
+        echo '<tr>';
+        echo '<td>'.$user->ID.'</td>';
+        echo '<td>'.esc_html($user->display_name).'</td>';
+        echo '<td>'.esc_html($user->user_email).'</td>';
+        echo '<td>'.implode(', ',$user->roles).'</td>';
+        echo '<td>'.count($orders).'</td>';
+        echo '<td><a href="?page=fd_customers&view='.$user->ID.'">View</a></td>';
+        echo '</tr>';
+    }
+
+    echo '</tbody></table>';
+
+    // Pagination
+    $total_pages = ceil($total_items / $per_page);
+    if ($total_pages > 1) {
+        echo '<div class="tablenav"><div class="tablenav-pages">';
+        for ($i=1;$i<=$total_pages;$i++) {
+            $class = ($i==$current_page)?'current-page':'';
+            echo '<a class="'.$class.'" href="?page=fd_customers&paged='.$i.'">'.$i.'</a> ';
+        }
+        echo '</div></div>';
+    }
 
     echo '</div>'; // wrap
 }
+?>

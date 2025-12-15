@@ -158,14 +158,16 @@ wp_nav_menu( array(
 ?>
                 </div><!-- /.navbar-collapse -->
 
-                <div class="attr-right">
-                    <!-- Start Atribute Navigation -->
-                    <div class="attr-nav attr-box">
-                        <a href="#" class="btn btn-primary">Sign In</a>
-                    </div>
-                    <!-- End Atribute Navigation -->
-                </div>
-                <!-- End Side Menu -->
+                <?php
+if(is_user_logged_in()){
+    $current_user = wp_get_current_user();
+    echo '<span>Welcome, ' . esc_html($current_user->display_name) . '</span>';
+    echo ' | <a href="' . esc_url(wp_logout_url(home_url())) . '">Logout</a>';
+} else {
+    echo '<a href="' . esc_url(home_url('/login/')) . '">Sign In</a>';
+}
+?>
+
             </div>   
 
         </nav>

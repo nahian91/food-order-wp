@@ -1,6 +1,9 @@
 <?php
 if(!defined('ABSPATH')) exit;
 
+/*----------------------
+# Extras List Table
+----------------------*/
 if(!class_exists('FD_Extras_List_Table')){
     require_once ABSPATH.'wp-admin/includes/class-wp-list-table.php';
 
@@ -56,7 +59,6 @@ if(!class_exists('FD_Extras_List_Table')){
             $extras = get_option('fd_extras', []);
             $total_items = count($extras);
 
-            // Pagination
             $extras = array_slice($extras, ($current_page-1)*$per_page, $per_page, true);
             $this->items = array_map(function($e,$i){ $e['id']=$i; return $e; }, $extras, array_keys($extras));
             $this->_column_headers = [$this->get_columns(), [], []];
@@ -68,6 +70,40 @@ if(!class_exists('FD_Extras_List_Table')){
         }
     }
 }
+
+/*----------------------
+# Enqueue Media Scripts (inline JS in footer)
+----------------------*/
+function fd_enqueue_media_scripts($hook) {
+    if($hook != 'toplevel_page_food_delivery') return;
+    wp_enqueue_media();
+    add_action('admin_footer', function(){
+        ?>
+        <script type="text/javascript">
+        jQuery(document).ready(function($){
+            var file_frame;
+            $('#fd_extra_file_button').on('click', function(e){
+                e.preventDefault();
+                if(file_frame){ file_frame.open(); return; }
+                file_frame = wp.media.frames.file_frame = wp.media({
+                    title: 'Select or Upload File',
+                    button: { text: 'Use this file' },
+                    multiple: false
+                });
+                file_frame.on('select', function(){
+                    var attachment = file_frame.state().get('selection').first().toJSON();
+                    $('#fd_extra_file').val(attachment.id);
+                    var thumb = attachment.sizes && attachment.sizes.thumbnail ? attachment.sizes.thumbnail.url : attachment.url;
+                    $('#fd_extra_file_preview').html('<img src="'+thumb+'" style="max-width:80px;max-height:80px;" />');
+                });
+                file_frame.open();
+            });
+        });
+        </script>
+        <?php
+    });
+}
+add_action('admin_enqueue_scripts', 'fd_enqueue_media_scripts');
 
 /*----------------------
 # Extras Tab
@@ -90,7 +126,6 @@ function fd_extras_tab(){
         case 'all':
             $extras = get_option('fd_extras', []);
 
-            // Delete
             if(isset($_GET['delete'])){
                 $delete_id = intval($_GET['delete']);
                 $nonce = $_GET['_wpnonce'] ?? '';
@@ -126,15 +161,7 @@ function fd_add_extra_tab(){
 
     if($_POST && isset($_POST['fd_add_extra_nonce']) && wp_verify_nonce($_POST['fd_add_extra_nonce'],'fd_add_extra')){
         $extra_name = sanitize_text_field($_POST['fd_extra_name']);
-        $attachment_id = 0;
-
-        if(!empty($_FILES['fd_extra_file']['name'])){
-            require_once(ABSPATH.'wp-admin/includes/file.php');
-            require_once(ABSPATH.'wp-admin/includes/media.php');
-            require_once(ABSPATH.'wp-admin/includes/image.php');
-            $attachment_id = media_handle_upload('fd_extra_file', 0);
-            if(is_wp_error($attachment_id)) $attachment_id = $edit_item['file_id'] ?? 0;
-        }
+        $attachment_id = intval($_POST['fd_extra_file'] ?? 0);
 
         if($edit_item){
             $extras[$edit_id] = ['name'=>$extra_name,'file_id'=>$attachment_id ?: $edit_item['file_id']];
@@ -151,7 +178,7 @@ function fd_add_extra_tab(){
     <div class="metabox-holder columns-2">
         <div class="postbox"><h2 class="hndle"><span><?php echo $edit_item?'Edit Extra':'Add New Extra'; ?></span></h2>
             <div class="inside">
-                <form method="post" enctype="multipart/form-data">
+                <form method="post">
                     <?php wp_nonce_field('fd_add_extra','fd_add_extra_nonce'); ?>
                     <table class="form-table">
                         <tr>
@@ -160,8 +187,12 @@ function fd_add_extra_tab(){
                         </tr>
                         <tr>
                             <th>Image/File</th>
-                            <td><input type="file" name="fd_extra_file" accept="image/*,.pdf,.doc,.docx">
-                                <?php if(!empty($edit_item['file_id'])) echo wp_get_attachment_image($edit_item['file_id'], [80,80]); ?>
+                            <td>
+                                <input type="hidden" name="fd_extra_file" id="fd_extra_file" value="<?php echo esc_attr($edit_item['file_id'] ?? ''); ?>">
+                                <button type="button" class="button" id="fd_extra_file_button"><?php echo $edit_item && !empty($edit_item['file_id']) ? 'Change File' : 'Select File'; ?></button>
+                                <div id="fd_extra_file_preview" style="margin-top:10px;">
+                                    <?php if(!empty($edit_item['file_id'])) echo wp_get_attachment_image($edit_item['file_id'], [80,80]); ?>
+                                </div>
                             </td>
                         </tr>
                     </table>

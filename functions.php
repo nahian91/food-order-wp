@@ -327,8 +327,7 @@ function fd_main_page(){
         'categories'=> 'Categories',
         'extras'    => 'Extras',
         'reports'   => 'Reports',
-        'customers' => 'Customers',
-        'settings'  => 'Settings'
+        'customers' => 'Customers'
     ];
 
     $active = $_GET['tab'] ?? 'dashboard';
@@ -365,7 +364,6 @@ function fd_main_page(){
                     case 'extras': fd_extras_tab(); break;
                     case 'reports': fd_reports_tab(); break;
                     case 'customers': fd_customers_tab(); break;
-                    case 'settings': fd_settings_tab(); break;
                 }
                 ?>
             </div>
@@ -419,7 +417,7 @@ require_once get_template_directory() . '/inc/categories.php';
 require_once get_template_directory() . '/inc/extras.php';
 require_once get_template_directory() . '/inc/report.php';
 require_once get_template_directory() . '/inc/customers.php';
-require_once get_template_directory() . '/inc/settings.php';
+require_once get_template_directory() . '/inc/frontend.php';
 
 
 
