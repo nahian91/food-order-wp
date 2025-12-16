@@ -50,6 +50,7 @@ function awesome_food_delivery_setup() {
 	register_nav_menus(
 		array(
 			'menu-1' => esc_html__( 'Primary', 'awesome-food-delivery' ),
+			'menu-2' => esc_html__( 'Footer', 'awesome-food-delivery' ),
 		)
 	);
 
@@ -173,85 +174,6 @@ function awesome_food_delivery_scripts() {
 	}
 }
 add_action( 'wp_enqueue_scripts', 'awesome_food_delivery_scripts' );
-
-// -----------------------------
-// Custom Post Types: Reviews & Gallery
-// -----------------------------
-function awesome_food_delivery_cpts() {
-
-    // ===== Reviews CPT =====
-    $labels_reviews = array(
-        'name'               => _x( 'Reviews', 'post type general name', 'awesome-food-delivery' ),
-        'singular_name'      => _x( 'Review', 'post type singular name', 'awesome-food-delivery' ),
-        'menu_name'          => _x( 'Reviews', 'admin menu', 'awesome-food-delivery' ),
-        'name_admin_bar'     => _x( 'Review', 'add new on admin bar', 'awesome-food-delivery' ),
-        'add_new'            => _x( 'Add New', 'review', 'awesome-food-delivery' ),
-        'add_new_item'       => __( 'Add New Review', 'awesome-food-delivery' ),
-        'new_item'           => __( 'New Review', 'awesome-food-delivery' ),
-        'edit_item'          => __( 'Edit Review', 'awesome-food-delivery' ),
-        'view_item'          => __( 'View Review', 'awesome-food-delivery' ),
-        'all_items'          => __( 'All Reviews', 'awesome-food-delivery' ),
-        'search_items'       => __( 'Search Reviews', 'awesome-food-delivery' ),
-        'parent_item_colon'  => __( 'Parent Reviews:', 'awesome-food-delivery' ),
-        'not_found'          => __( 'No reviews found.', 'awesome-food-delivery' ),
-        'not_found_in_trash' => __( 'No reviews found in Trash.', 'awesome-food-delivery' )
-    );
-
-    $args_reviews = array(
-        'labels'             => $labels_reviews,
-        'public'             => true,
-        'publicly_queryable' => true,
-        'show_ui'            => true,
-        'show_in_menu'       => true,
-        'query_var'          => true,
-        'rewrite'            => array( 'slug' => 'reviews' ),
-        'capability_type'    => 'post',
-        'has_archive'        => true,
-        'hierarchical'       => false,
-        'menu_position'      => 5,
-        'menu_icon'          => 'dashicons-thumbs-up',
-        'supports'           => array( 'title', 'editor', 'thumbnail', 'excerpt' )
-    );
-    register_post_type( 'review', $args_reviews );
-
-
-    // ===== Gallery CPT =====
-    $labels_gallery = array(
-        'name'               => _x( 'Gallery', 'post type general name', 'awesome-food-delivery' ),
-        'singular_name'      => _x( 'Gallery Item', 'post type singular name', 'awesome-food-delivery' ),
-        'menu_name'          => _x( 'Gallery', 'admin menu', 'awesome-food-delivery' ),
-        'name_admin_bar'     => _x( 'Gallery Item', 'add new on admin bar', 'awesome-food-delivery' ),
-        'add_new'            => _x( 'Add New', 'gallery item', 'awesome-food-delivery' ),
-        'add_new_item'       => __( 'Add New Gallery Item', 'awesome-food-delivery' ),
-        'new_item'           => __( 'New Gallery Item', 'awesome-food-delivery' ),
-        'edit_item'          => __( 'Edit Gallery Item', 'awesome-food-delivery' ),
-        'view_item'          => __( 'View Gallery Item', 'awesome-food-delivery' ),
-        'all_items'          => __( 'All Gallery Items', 'awesome-food-delivery' ),
-        'search_items'       => __( 'Search Gallery', 'awesome-food-delivery' ),
-        'parent_item_colon'  => __( 'Parent Gallery:', 'awesome-food-delivery' ),
-        'not_found'          => __( 'No gallery items found.', 'awesome-food-delivery' ),
-        'not_found_in_trash' => __( 'No gallery items found in Trash.', 'awesome-food-delivery' )
-    );
-
-    $args_gallery = array(
-        'labels'             => $labels_gallery,
-        'public'             => true,
-        'publicly_queryable' => true,
-        'show_ui'            => true,
-        'show_in_menu'       => true,
-        'query_var'          => true,
-        'rewrite'            => array( 'slug' => 'gallery' ),
-        'capability_type'    => 'post',
-        'has_archive'        => true,
-        'hierarchical'       => false,
-        'menu_position'      => 6,
-        'menu_icon'          => 'dashicons-format-gallery',
-        'supports'           => array( 'title', 'editor', 'thumbnail', 'excerpt' )
-    );
-    register_post_type( 'gallery', $args_gallery );
-
-}
-add_action( 'init', 'awesome_food_delivery_cpts' );
 
 // Save ACF JSON
 add_filter('acf/settings/save_json', function( $path ) {
@@ -418,12 +340,4 @@ require_once get_template_directory() . '/inc/extras.php';
 require_once get_template_directory() . '/inc/report.php';
 require_once get_template_directory() . '/inc/customers.php';
 require_once get_template_directory() . '/inc/frontend.php';
-
-
-
-
-
-
-
-
 

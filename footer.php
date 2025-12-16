@@ -20,15 +20,7 @@
                     <div class="f-item about">
                         <p>
                             Discover culinary delights recipes and inspiration in our food haven.
-                        </p>
-                        <ul class="opening-list">
-                            <li>
-                                Mon  -  Fri <span class="text-end">8:00 AM  -  6:00 PM</span>
-                            </li>
-                            <li>
-                                Saturday <span class="text-end">9:00 AM  -  5:00 PM</span>
-                            </li>
-                        </ul>                  
+                        </p>                 
                     </div>
                 </div>
                 <!-- End Singel Item -->
@@ -36,27 +28,11 @@
                 <!-- Singel Item -->
                 <div class="col-lg-2 col-md-6 mt-50 footer-item pl-50 pl-md-15 pl-xs-15">
                     <div class="f-item link">
-                        <h4 class="widget-title">Explore</h4>
-                        <ul>
-                            <li>
-                                <a href="about-us.html">Compnay Profile</a>
-                            </li>
-                            <li>
-                                <a href="about-us.html">About</a>
-                            </li>
-                            <li>
-                                <a href="contact-us.html">Help Center</a>
-                            </li>
-                            <li>
-                                <a href="contact-us.html">Career</a>
-                            </li>
-                            <li>
-                                <a href="about-us.html">Features</a>
-                            </li>
-                            <li>
-                                <a href="contact-us.html">Contact</a>
-                            </li>
-                        </ul>
+                        <h4 class="widget-title">Quick Links</h4>
+                        <?php
+wp_nav_menu([
+    'theme_location' => 'footer']);
+?>
                     </div>
                 </div>
                 <!-- End Singel Item -->
@@ -98,7 +74,7 @@
                 <!-- Singel Item -->
                 <div class="col-lg-4 col-md-6 footer-item mt-50">
                     <div class="f-item newsletter">
-                        <h4 class="widget-title">Newsletter</h4>
+                        <h4 class="widget-title">Join Us</h4>
                         <p>
                             Join our subscribers list to get the latest news and special offers.
                         </p>
