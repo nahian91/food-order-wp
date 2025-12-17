@@ -2,98 +2,127 @@
 if (!defined('ABSPATH')) exit;
 
 /*--------------------------------------------------------------
-# View Registered Users and Their Orders - Procedural
+# View Registered Users and Their Orders - Clean HTML Format
 --------------------------------------------------------------*/
 function fd_customers_tab() {
 
-    // View single customer details
-    if (isset($_GET['view'])) {
+    $currency = get_option('fd_currency', '৳');
+
+    // ----- Single Customer View -----
+    if (isset($_GET['view'])) :
         $user_id = intval($_GET['view']);
         $user = get_userdata($user_id);
         if (!$user) return;
 
-        // Get user orders
         $orders = get_posts([
-            'post_type' => 'food_order',
-            'meta_key' => 'customer_id',
-            'meta_value' => $user_id,
-            'numberposts' => -1
+            'post_type'   => 'food_order',
+            'meta_key'    => 'customer_id',
+            'meta_value'  => $user_id,
+            'numberposts' => -1,
         ]);
+        ?>
+        <div class="wrap">
+            <h2>Customer #<?php echo $user->ID; ?> Details</h2>
+            <p><strong>Name:</strong> <?php echo esc_html($user->display_name); ?></p>
+            <p><strong>Email:</strong> <?php echo esc_html($user->user_email); ?></p>
+            <p><strong>Role:</strong> <?php echo esc_html(implode(', ', $user->roles)); ?></p>
 
-        echo '<div class="wrap"><h2>Customer #'.$user->ID.' Details</h2>';
-        echo '<p><strong>Name:</strong> '.esc_html($user->display_name).'</p>';
-        echo '<p><strong>Email:</strong> '.esc_html($user->user_email).'</p>';
-        echo '<p><strong>Role:</strong> '.implode(', ', $user->roles).'</p>';
+            <h3>Orders</h3>
+            <?php if ($orders) : ?>
+                <table class="wp-list-table widefat fixed striped">
+                    <thead>
+                        <tr>
+                            <th>Order ID</th>
+                            <th>Total</th>
+                            <th>Status</th>
+                            <th>Date</th>
+                            <th>View</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($orders as $o) :
+                            $status = get_post_meta($o->ID, 'status', true) ?: 'Pending';
+                            $total = floatval(get_post_meta($o->ID, 'total_price', true));
+                        ?>
+                            <tr>
+                                <td>#<?php echo $o->ID; ?></td>
+                                <td><?php echo $currency . number_format($total, 2); ?></td>
+                                <td><?php echo ucfirst($status); ?></td>
+                                <td><?php echo get_the_date('Y-m-d H:i', $o->ID); ?></td>
+                                <td><a href="?page=fd_orders&view=<?php echo $o->ID; ?>">View</a></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php else : ?>
+                <p>No orders yet.</p>
+            <?php endif; ?>
 
-        echo '<h3>Orders</h3>';
-        if ($orders) {
-            echo '<table class="wp-list-table widefat fixed striped">';
-            echo '<thead><tr><th>Order ID</th><th>Total</th><th>Status</th><th>Date</th><th>View</th></tr></thead>';
-            echo '<tbody>';
-            foreach ($orders as $o) {
-                $status = get_post_meta($o->ID,'status',true) ?: 'Pending';
-                $total = get_post_meta($o->ID,'total_price',true) ?: 0;
-                echo '<tr>';
-                echo '<td>#'.$o->ID.'</td>';
-                echo '<td>'.get_option('fd_currency','৳').number_format($total,2).'</td>';
-                echo '<td>'.ucfirst($status).'</td>';
-                echo '<td>'.get_the_date('Y-m-d H:i',$o->ID).'</td>';
-                echo '<td><a href="?page=fd_orders&view='.$o->ID.'">View</a></td>';
-                echo '</tr>';
-            }
-            echo '</tbody></table>';
-        } else {
-            echo '<p>No orders yet.</p>';
-        }
-
-        echo '<p><a href="?page=fd_customers">Back to Customers</a></p></div>';
+            <p><a href="?page=fd_customers">Back to Customers</a></p>
+        </div>
+        <?php
         return;
-    }
+    endif;
 
-    // Default: list all registered users
+    // ----- Default: List All Customers -----
     $all_users = get_users();
     $per_page = 20;
-    $current_page = isset($_GET['paged']) ? max(1,intval($_GET['paged'])) : 1;
+    $current_page = isset($_GET['paged']) ? max(1, intval($_GET['paged'])) : 1;
     $total_items = count($all_users);
-    $users = array_slice($all_users, ($current_page-1)*$per_page, $per_page);
+    $users = array_slice($all_users, ($current_page - 1) * $per_page, $per_page);
+    ?>
 
-    echo '<div class="wrap"><h1 class="wp-heading-inline">Customers</h1>';
-    echo '<table class="wp-list-table widefat fixed striped">';
-    echo '<thead><tr>';
-    echo '<th>ID</th><th>Name</th><th>Email</th><th>Role</th><th>Total Orders</th><th>Actions</th>';
-    echo '</tr></thead>';
-    echo '<tbody>';
+    <div class="wrap">
+        <h1 class="wp-heading-inline">Customers</h1>
 
-    foreach ($users as $user) {
-        $orders = get_posts([
-            'post_type' => 'food_order',
-            'meta_key' => 'customer_id',
-            'meta_value' => $user->ID,
-            'numberposts' => -1
-        ]);
-        echo '<tr>';
-        echo '<td>'.$user->ID.'</td>';
-        echo '<td>'.esc_html($user->display_name).'</td>';
-        echo '<td>'.esc_html($user->user_email).'</td>';
-        echo '<td>'.implode(', ',$user->roles).'</td>';
-        echo '<td>'.count($orders).'</td>';
-        echo '<td><a href="?page=fd_customers&view='.$user->ID.'">View</a></td>';
-        echo '</tr>';
-    }
+        <table class="wp-list-table widefat fixed striped">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Total Orders</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($users as $user) :
+                    $orders = get_posts([
+                        'post_type'   => 'food_order',
+                        'meta_key'    => 'customer_id',
+                        'meta_value'  => $user->ID,
+                        'numberposts' => -1,
+                    ]);
+                ?>
+                    <tr>
+                        <td><?php echo $user->ID; ?></td>
+                        <td><?php echo esc_html($user->display_name); ?></td>
+                        <td><?php echo esc_html($user->user_email); ?></td>
+                        <td><?php echo esc_html(implode(', ', $user->roles)); ?></td>
+                        <td><?php echo count($orders); ?></td>
+                        <td><a href="?page=fd_customers&view=<?php echo $user->ID; ?>">View</a></td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
 
-    echo '</tbody></table>';
+        <!-- Pagination -->
+        <?php
+        $total_pages = ceil($total_items / $per_page);
+        if ($total_pages > 1) : ?>
+            <div class="tablenav">
+                <div class="tablenav-pages">
+                    <?php for ($i = 1; $i <= $total_pages; $i++) :
+                        $class = ($i == $current_page) ? 'current-page' : '';
+                    ?>
+                        <a class="<?php echo $class; ?>" href="?page=fd_customers&paged=<?php echo $i; ?>"><?php echo $i; ?></a>
+                    <?php endfor; ?>
+                </div>
+            </div>
+        <?php endif; ?>
 
-    // Pagination
-    $total_pages = ceil($total_items / $per_page);
-    if ($total_pages > 1) {
-        echo '<div class="tablenav"><div class="tablenav-pages">';
-        for ($i=1;$i<=$total_pages;$i++) {
-            $class = ($i==$current_page)?'current-page':'';
-            echo '<a class="'.$class.'" href="?page=fd_customers&paged='.$i.'">'.$i.'</a> ';
-        }
-        echo '</div></div>';
-    }
-
-    echo '</div>'; // wrap
-}
+    </div>
+<?php
+} // end function
 ?>

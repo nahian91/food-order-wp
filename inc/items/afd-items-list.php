@@ -68,17 +68,17 @@ function fd_items_list(){
 
         echo '<td>$'.$price.'</td>';
 
-        $view = admin_url('admin.php?page=food_delivery&tab=items&sub=view&item='.$item->ID);
-        $edit = admin_url('admin.php?page=food_delivery&tab=items&sub=edit&item='.$item->ID);
+        $view = admin_url('admin.php?page=awesome_food_delivery&tab=items&sub=view&item='.$item->ID);
+        $edit = admin_url('admin.php?page=awesome_food_delivery&tab=items&sub=edit&item='.$item->ID);
         $del  = wp_nonce_url(
             admin_url('admin-post.php?action=fd_delete_item&item='.$item->ID),
             'fd_delete_item_'.$item->ID
         );
 
         echo '<td>
-                <a class="button" href="'.$view.'">View</a>
-                <a class="button" href="'.$edit.'">Edit</a>
-                <a class="button" onclick="return confirm(\'Delete?\')" href="'.$del.'">Delete</a>
+                <a class="button afd-btn-view" href="'.$view.'">View</a>
+                <a class="button afd-btn-edit" href="'.$edit.'">Edit</a>
+                <a class="button afd-btn-delete" onclick="return confirm(\'Delete?\')" href="'.$del.'">Delete</a>
               </td>';
 
         echo '</tr>';
@@ -133,6 +133,6 @@ add_action('admin_post_fd_bulk_delete', function(){
         }
     }
 
-    wp_redirect(admin_url('admin.php?page=food_delivery&tab=items&sub=all'));
+    wp_redirect(admin_url('admin.php?page=awesome_food_delivery&tab=items&sub=all'));
     exit;
 });

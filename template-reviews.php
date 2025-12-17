@@ -26,7 +26,16 @@ get_header();?>
     <div class="testimonial-style-one-area default-padding bg-gray bg-cover text-center" style="background-image: url(<?php echo get_template_directory_uri();?>/assets/img/shape/4.jpg);">
         <div class="container">
             <div class="row">
-                <div class="col-lg-6">
+                <?php 
+                    $reviews = get_field('reviews', 'option');               
+                ?>
+                <?php 
+                    foreach($reviews as $review) {
+                        $review_title = $review['review_title'];
+                        $review_description = $review['review_description'];
+                        $review_image = $review['review_image'];
+                        ?>
+                    <div class="col-lg-6">
                     <div class="testimonial-style-one-carousel">
                         <!-- Additional required wrapper -->
                         <div class="testimonial-style-one">
@@ -40,14 +49,12 @@ get_header();?>
                                         <i class="fas fa-star"></i>
                                     </div>
                                     <div class="provider">
-                                        <h4>Best Chicken Fry</h4>
+                                        <h4><?php echo $review_title;?></h4>
                                     </div>
-                                    <p>
-                                        "Thanks to your web agency team for their professional work. The website they created for my business exceeded my expectations, and my clients have given positive feedback about its design and user-friendliness."
-                                    </p>
+                                    <p><?php echo $review_description;?></p>
                                     <div class="tm-proivder-thumb">
-                                        <img src="<?php echo get_template_directory_uri();?>/assets/img/food/1.jpg" alt="Image Not Found">
-                                        <img src="<?php echo get_template_directory_uri();?>/assets/img/team/10.jpg" alt="Image Not Found">
+                                        <img src="<?php echo $review_image;?>" alt="">
+                                        <img src="<?php echo $review_image;?>" alt="">
                                     </div>
                                 </div>
                             </div>
@@ -56,94 +63,9 @@ get_header();?>
                     <br><br><br>
                     <!-- End Single item -->
                 </div>
-                <div class="col-lg-6">
-                    <!-- Single item -->
-                    <div class="swiper-slide">
-                        <div class="testimonial-style-one">
-                            <div class="item">
-                                <div class="content">
-                                    <div class="tm-review">
-                                        <i class="fas fa-star"></i>
-                                        <i class="fas fa-star"></i>
-                                        <i class="fas fa-star"></i>
-                                        <i class="fas fa-star"></i>
-                                        <i class="fas fa-star"></i>
-                                    </div>
-                                    <div class="provider">
-                                        <h4>This pizza is so good</h4>
-                                    </div>
-                                    <p>
-                                        "Thanks to your web agency team for their professional work. The website they created for my business exceeded my expectations, and my clients have given positive feedback about its design and user-friendliness."
-                                    </p>
-                                    <div class="tm-proivder-thumb">
-                                        <img src="<?php echo get_template_directory_uri();?>/assets/img/food/6.jpg" alt="Image Not Found">
-                                        <img src="<?php echo get_template_directory_uri();?>/assets/img/team/11.jpg" alt="Image Not Found">
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                    </div>
-                    <br><br><br>
-                </div>
-                <div class="col-lg-6">
-                    <div class="testimonial-style-one-carousel">
-                        <!-- Additional required wrapper -->
-                        <div class="testimonial-style-one">
-                            <div class="item">
-                                <div class="content">
-                                    <div class="tm-review">
-                                        <i class="fas fa-star"></i>
-                                        <i class="fas fa-star"></i>
-                                        <i class="fas fa-star"></i>
-                                        <i class="fas fa-star"></i>
-                                        <i class="fas fa-star"></i>
-                                    </div>
-                                    <div class="provider">
-                                        <h4>Best Chicken Fry</h4>
-                                    </div>
-                                    <p>
-                                        "Thanks to your web agency team for their professional work. The website they created for my business exceeded my expectations, and my clients have given positive feedback about its design and user-friendliness."
-                                    </p>
-                                    <div class="tm-proivder-thumb">
-                                        <img src="<?php echo get_template_directory_uri();?>/assets/img/food/1.jpg" alt="Image Not Found">
-                                        <img src="<?php echo get_template_directory_uri();?>/assets/img/team/10.jpg" alt="Image Not Found">
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <!-- End Single item -->
-                </div>
-                <div class="col-lg-6">
-                    <!-- Single item -->
-                    <div class="swiper-slide">
-                        <div class="testimonial-style-one">
-                            <div class="item">
-                                <div class="content">
-                                    <div class="tm-review">
-                                        <i class="fas fa-star"></i>
-                                        <i class="fas fa-star"></i>
-                                        <i class="fas fa-star"></i>
-                                        <i class="fas fa-star"></i>
-                                        <i class="fas fa-star"></i>
-                                    </div>
-                                    <div class="provider">
-                                        <h4>This pizza is so good</h4>
-                                    </div>
-                                    <p>
-                                        "Thanks to your web agency team for their professional work. The website they created for my business exceeded my expectations, and my clients have given positive feedback about its design and user-friendliness."
-                                    </p>
-                                    <div class="tm-proivder-thumb">
-                                        <img src="<?php echo get_template_directory_uri();?>/assets/img/food/6.jpg" alt="Image Not Found">
-                                        <img src="<?php echo get_template_directory_uri();?>/assets/img/team/11.jpg" alt="Image Not Found">
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                    </div>
-                </div>
+                        <?php
+                    }
+                ?>
             </div>
         </div>
     </div>

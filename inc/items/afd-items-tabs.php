@@ -11,7 +11,7 @@ function fd_items_tab(){
 
     echo '<h2 class="nav-tab-wrapper">';
     foreach($tabs as $k=>$label){
-        echo '<a class="nav-tab '.($sub==$k?'nav-tab-active':'').'" href="?page=food_delivery&tab=items&sub='.$k.'">'.$label.'</a>';
+        echo '<a class="nav-tab '.($sub==$k?'nav-tab-active':'').'" href="?page=awesome_food_delivery&tab=items&sub='.$k.'">'.$label.'</a>';
     }
     echo '</h2><div style="margin-top:20px;">';
 

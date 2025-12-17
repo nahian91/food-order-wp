@@ -132,7 +132,7 @@
                     <button type="button" class="navbar-toggle" data-toggle="collapse" data-target="#navbar-menu">
                         <i class="fa fa-bars"></i>
                     </button>
-                    <a class="navbar-brand" href="index.html">
+                    <a class="navbar-brand" href="<?php echo site_url();?>">
                         <img src="<?php echo get_template_directory_uri();?>/assets/img/logo.png" class="regular-img logo logo-display" alt="Logo">
                         <img src="<?php echo get_template_directory_uri();?>/assets/img/logo-light.png" class="dark-img logo logo-display" alt="Logo">
                         <img src="<?php echo get_template_directory_uri();?>/assets/img/logo.png" class="logo logo-scrolled" alt="Logo">

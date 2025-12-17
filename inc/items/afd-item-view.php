@@ -19,7 +19,7 @@ function fd_view_item_tab($item_id){
 
     echo '<div class="wrap">';
     echo '<h1 class="wp-heading-inline">'.esc_html($item->post_title).'</h1>';
-    echo '<a class="page-title-action" href="?page=food_delivery&tab=items&sub=edit&item='.$item_id.'">Edit</a>';
+    echo '<a class="page-title-action" href="?page=awesome_food_delivery&tab=items&sub=edit&item='.$item_id.'">Edit</a>';
     echo '<hr class="wp-header-end">';
 
     echo '<table class="form-table" style="margin-top:20px;">';
@@ -65,6 +65,6 @@ function fd_view_item_tab($item_id){
 
     echo '</table>';
 
-    echo '<p><a class="button" href="?page=food_delivery&tab=items&sub=all">← Back to All Items</a></p>';
+    echo '<p><a class="button" href="?page=awesome_food_delivery&tab=items&sub=all">← Back to All Items</a></p>';
     echo '</div>';
 }

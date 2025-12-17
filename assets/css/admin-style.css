@@ -1,0 +1,88 @@
+*{
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: Arial, Helvetica, sans-serif
+}
+.awesome-food-delivery {
+  margin: 0 30px;
+  display: flex;
+  gap: 30px;
+  flex-wrap: wrap;
+}
+
+/* View Button */
+.afd-btn-view {
+    background-color: #3498db !important; /* blue */
+    color: #fff !important;
+    border: 0 !important;
+}
+.afd-btn-view:hover {
+    background-color: #2980b9 !important; /* blue */
+    color: #fff !important;
+}
+
+/* Edit Button */
+.afd-btn-edit {
+    background-color: #603d05 !important; /* blue */
+    color: #fff !important;
+    border: 0 !important;
+}
+.afd-btn-edit:hover {
+    background-color: #e67e22 !important; /* blue */
+    color: #fff !important;
+}
+
+/* Delete Button */
+.afd-btn-delete {
+    background-color: #e74c3c !important; /* blue */
+    color: #fff !important;
+    border: 0 !important;
+}
+.afd-btn-delete:hover {
+    background-color: #c0392b !important; /* blue */
+    color: #fff !important;
+}
+
+.afd-left-tabs {
+  margin: 0;
+  flex-basis: 220px;
+  background-color: #fff;
+  border: 1px solid #ddd;
+}
+.afd-left-tabs li a {
+  text-decoration: none;
+  color: #333;
+  display: block;
+  padding: 15px 25px;
+  font-size: 17px;
+  font-family: "Helvetica";
+}
+.afd-left-tabs li {
+  border-bottom: 1px solid #ddd;
+  margin-bottom: 0;
+}
+.afd-left-tabs li a.active {
+  background-color: #E53935;
+  color: #fff;
+  transition: .3s;
+}
+.afd-left-tabs li a:hover {
+  background-color: #E53935;
+  color: #fff;
+}
+
+.afd-right-box {
+    flex: 1;
+    min-width: 300px; /* optional */
+    border: 1px solid #ddd;
+    background-color: #fff;
+    padding: 20px;
+}
+.afd-right-box .nav-tab-wrapper .nav-tab.nav-tab-active {
+  background-color: #e53935;
+  color: #fff;
+}
+.afd-right-box .nav-tab-wrapper .nav-tab {
+  background-color: transparent;
+}

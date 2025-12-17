@@ -1,5 +1,4 @@
 <?php
-
 /*-----------------------------------------
 # View Category (Name + Image, WP Admin Default Layout)
 -----------------------------------------*/
@@ -18,6 +17,9 @@ function fd_category_view($id){
         ],
         'numberposts'=>-1
     ]);
+
+    // Correct menu page slug
+    $page_url = admin_url('admin.php?page=awesome_food_delivery&tab=categories&sub=all');
     ?>
 
     <div class="wrap">
@@ -57,7 +59,7 @@ function fd_category_view($id){
         </table>
 
         <p>
-            <a class="button" href="?page=food_delivery&tab=categories&sub=all">Back to All Categories</a>
+            <a class="button" href="<?php echo esc_url($page_url); ?>">Back to All Categories</a>
         </p>
     </div>
 

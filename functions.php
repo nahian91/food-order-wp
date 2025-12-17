@@ -175,6 +175,20 @@ function awesome_food_delivery_scripts() {
 }
 add_action( 'wp_enqueue_scripts', 'awesome_food_delivery_scripts' );
 
+function fd_admin_styles() {
+    $theme_uri = get_template_directory_uri();
+
+    // Enqueue custom admin CSS
+    wp_enqueue_style( 
+        'awesome-food-delivery-admin-style', // handle
+        $theme_uri . '/assets/css/admin-style.css', // path to your custom admin CSS
+        array(), // dependencies
+        _S_VERSION // version
+    );
+}
+add_action( 'admin_enqueue_scripts', 'fd_admin_styles' );
+
+
 // Save ACF JSON
 add_filter('acf/settings/save_json', function( $path ) {
     return get_stylesheet_directory() . '/acf-json';
@@ -230,7 +244,7 @@ add_action('admin_menu', function(){
         'Food Delivery',
         'Food Delivery',
         'manage_options',
-        'food_delivery',
+        'awesome_food_delivery',
         'fd_main_page',
         'dashicons-carrot',
         20
@@ -255,28 +269,22 @@ function fd_main_page(){
     $active = $_GET['tab'] ?? 'dashboard';
     ?>
 
-    <div class="wrap">
-        <h1 class="wp-heading-inline">Food Delivery</h1>
-        <hr class="wp-header-end">
-
-        <div style="display:flex; gap:20px; margin-top:20px;">
+    <div class="awesome-food-delivery">
 
             <!-- LEFT TABS -->
-            <div style="width:220px;">
-                <ul class="fd-left-tabs">
+                <ul class="afd-left-tabs">
                     <?php foreach($tabs as $key=>$label): ?>
                         <li>
                             <a class="<?php echo $active===$key?'active':''; ?>"
-                               href="<?php echo admin_url('admin.php?page=food_delivery&tab='.$key); ?>">
+                               href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab='.$key); ?>">
                                 <?php echo esc_html($label); ?>
                             </a>
                         </li>
                     <?php endforeach; ?>
                 </ul>
-            </div>
 
             <!-- RIGHT CONTENT -->
-            <div style="flex:1;">
+            <div class="afd-right-box">
                 <?php
                 switch($active){
                     case 'dashboard': fd_dashboard_tab(); break;
@@ -289,45 +297,7 @@ function fd_main_page(){
                 }
                 ?>
             </div>
-
-        </div>
     </div>
-
-    <style>
-        .fd-left-tabs{
-            margin:0;
-            padding:0;
-            list-style:none;
-            background:#fff;
-            border:1px solid #c3c4c7;
-        }
-        .fd-left-tabs li a{
-            display:block;
-            padding:12px 14px;
-            text-decoration:none;
-            color:#1d2327;
-            border-bottom:1px solid #e0e0e0;
-        }
-        .fd-left-tabs li a:hover{
-            background:#f6f7f7;
-        }
-        .fd-left-tabs li a.active{
-            background:#2271b1;
-            color:#fff;
-            font-weight:600;
-        }
-        .fd-dashboard-box{
-            background:#fff;
-            padding:15px;
-            border:1px solid #dcdcdc;
-            margin-bottom:15px;
-            border-radius:5px;
-        }
-        .fd-dashboard-box h3{
-            margin-top:0;
-            margin-bottom:10px;
-        }
-    </style>
 
     <?php
 }
@@ -341,3 +311,38 @@ require_once get_template_directory() . '/inc/report.php';
 require_once get_template_directory() . '/inc/customers.php';
 require_once get_template_directory() . '/inc/frontend.php';
 
+add_action('admin_head', function() {
+    $screen = get_current_screen();
+
+    // Check if we are on your Food Delivery page
+    if($screen && $screen->id === 'toplevel_page_awesome_food_delivery') {
+        echo '<style>
+            /* Hide WP default admin UI */
+            #wpadminbar, /* top bar */
+            #adminmenu, #adminmenuback, #adminmenuwrap, /* left menu */
+            #wpfooter { display: none !important; }
+            
+            /* Make content full width */
+            #wpcontent, #wpbody-content { margin-left: 0 !important; padding: 0 !important; width: 100% !important; }
+            
+            body.wp-admin { background: #f1f1f1; }
+        </style>';
+    }
+});
+
+
+add_filter('login_redirect', function($redirect_to, $requested_redirect_to, $user) {
+
+    // Check if $user is a WP_User object
+    if( isset($user->roles) && is_array($user->roles) ) {
+
+        // You can target specific roles if you want
+        if( in_array('administrator', $user->roles) || in_array('editor', $user->roles) ) {
+            // Redirect to your Food Delivery page
+            return admin_url('admin.php?page=awesome_food_delivery');
+        }
+    }
+
+    // Default redirect for other users
+    return $redirect_to;
+}, 10, 3);

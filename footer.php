@@ -41,32 +41,24 @@ wp_nav_menu([
                 <div class="col-lg-3 col-md-6 footer-item  mt-50">
                     <div class="f-item contact">
                         <h4 class="widget-title">Contact Info</h4>
-                        <ul class="contact-widget">
-                            <li>
-                                <div class="icon">
-                                    <i class="fas fa-map-marker-alt"></i>
-                                </div>
-                                <div class="content">
-                                    175 10h Street, Office 375 Berlin, De 21562
-                                </div>
-                            </li>
-                            <li>
-                                <div class="icon">
-                                    <i class="fas fa-phone"></i>
-                                </div>
-                                <div class="content">
-                                    <a href="tel:2151234567">+123 34598768</a> <br> <a href="tel:2151234567">+554 34598734</a>
-                                </div>
-                            </li>
-                            <li>
-                                <div class="icon">
-                                    <i class="fas fa-envelope"></i>
-                                </div>
-                                <div class="content">
-                                    <a href="mailto:name@email.com">food@restan.com</a>
-                                </div>
-                            </li>
-                        </ul>
+                        <ul>
+                                    <?php 
+                                        $contact_info = get_field('contact_info', 'option');
+                                        foreach ($contact_info as $info) {
+                                            ?>
+                                                <li class="wow fadeInUp" style="visibility: visible; animation-name: fadeInUp; margin-bottom:30px">
+                                        <div class="icon">
+                                            <i class="<?php echo $info['contact_info_icon'];?>"></i>
+                                        </div>
+                                        <div class="content">
+                                            <h5 class=""><?php echo $info['contact_info_title'];?></h5>
+                                            <a href=""><?php echo $info['contact_info_description'];?></a>
+                                        </div>
+                                    </li>
+                                            <?php 
+                                        }
+                                    ?>
+                                </ul>
                     </div>
                 </div>
                 <!-- End Singel Item -->

@@ -31,35 +31,22 @@ get_header();?>
                                     Plan upon yet way get cold spot its week. Almost do am or limits hearts. Resolve parties but why she shewing.
                                 </p>
                                 <ul>
-                                    <li class="wow fadeInUp" style="visibility: visible; animation-name: fadeInUp;">
+                                    <?php 
+                                        $contact_info = get_field('contact_info', 'option');
+                                        foreach ($contact_info as $info) {
+                                            ?>
+                                                <li class="wow fadeInUp" style="visibility: visible; animation-name: fadeInUp;">
                                         <div class="icon">
-                                            <i class="fas fa-phone-alt"></i>
+                                            <i class="<?php echo $info['contact_info_icon'];?>"></i>
                                         </div>
                                         <div class="content">
-                                            <h5 class="title">Hotline</h5>
-                                            <a href="">+442084432500</a>
+                                            <h5 class="title"><?php echo $info['contact_info_title'];?></h5>
+                                            <a href=""><?php echo $info['contact_info_description'];?></a>
                                         </div>
                                     </li>
-                                    <li class="wow fadeInUp" data-wow-delay="100ms" style="visibility: visible; animation-delay: 100ms; animation-name: fadeInUp;">
-                                        <div class="icon">
-                                            <i class="fas fa-map-marker-alt"></i>
-                                        </div>
-                                        <div class="info">
-                                            <h5 class="title">Our Location</h5>
-                                            <p>
-                                                524 Hertford Road, London, EN35SS
-                                            </p>
-                                        </div>
-                                    </li>
-                                    <li class="wow fadeInUp" data-wow-delay="200ms" style="visibility: visible; animation-delay: 200ms; animation-name: fadeInUp;">
-                                        <div class="icon">
-                                            <i class="fas fa-envelope-open-text"></i>
-                                        </div>
-                                        <div class="info">
-                                            <h5 class="title">Official Email</h5>
-                                            <a href="mailto:info@agrul.com.com">info@gixus.com</a>
-                                        </div>
-                                    </li>
+                                            <?php 
+                                        }
+                                    ?>
                                 </ul>
                             </div>
                 </div>

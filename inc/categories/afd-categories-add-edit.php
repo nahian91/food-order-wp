@@ -54,7 +54,7 @@ function fd_category_add_edit(){
 
                 <p class="submit">
                     <input type="submit" class="button button-primary" value="<?php echo $edit_id?'Update Category':'Add Category'; ?>">
-                    <?php if($edit_id): ?><a href="?page=food_delivery&tab=categories" class="button">Cancel</a><?php endif; ?>
+                    <?php if($edit_id): ?><a href="?page=awesome_food_delivery&tab=categories" class="button">Cancel</a><?php endif; ?>
                 </p>
             </form>
         </div></div>

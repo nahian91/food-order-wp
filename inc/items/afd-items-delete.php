@@ -12,6 +12,6 @@ function fd_delete_item(){
 
     wp_trash_post($item_id);
 
-    wp_redirect(admin_url('admin.php?page=food_delivery&tab=items&sub=all'));
+    wp_redirect(admin_url('admin.php?page=awesome_food_delivery&tab=items&sub=all'));
     exit;
 }
