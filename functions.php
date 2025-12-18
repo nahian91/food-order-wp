@@ -185,6 +185,14 @@ function fd_admin_styles() {
         array(), // dependencies
         _S_VERSION // version
     );
+
+	wp_enqueue_script( 
+        'awesome-food-delivery-admin-script', 
+        $theme_uri . '/assets/js/admin-script.js', 
+        array('jquery'), // Important: script needs jQuery to run
+        _S_VERSION,
+        true // Load in footer
+    );
 }
 add_action( 'admin_enqueue_scripts', 'fd_admin_styles' );
 
@@ -271,17 +279,21 @@ function fd_main_page(){
 
     <div class="awesome-food-delivery">
 
-            <!-- LEFT TABS -->
-                <ul class="afd-left-tabs">
-                    <?php foreach($tabs as $key=>$label): ?>
-                        <li>
-                            <a class="<?php echo $active===$key?'active':''; ?>"
-                               href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab='.$key); ?>">
-                                <?php echo esc_html($label); ?>
-                            </a>
-                        </li>
-                    <?php endforeach; ?>
-                </ul>
+            <?php
+// Only show sidebar if NOT a print page
+if (!(isset($_GET['action']) && $_GET['action'] === 'print')) :
+?>
+<ul class="afd-left-tabs">
+    <li><a class="<?php echo ($_GET['tab'] ?? '') === 'dashboard' ? 'active' : ''; ?>" href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=dashboard'); ?>">Dashboard</a></li>
+    <li><a class="<?php echo ($_GET['tab'] ?? '') === 'orders' ? 'active' : ''; ?>" href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=orders'); ?>">Orders</a></li>
+    <li><a class="<?php echo ($_GET['tab'] ?? '') === 'items' ? 'active' : ''; ?>" href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=items'); ?>">Items</a></li>
+    <li><a class="<?php echo ($_GET['tab'] ?? '') === 'categories' ? 'active' : ''; ?>" href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=categories'); ?>">Categories</a></li>
+    <li><a class="<?php echo ($_GET['tab'] ?? '') === 'extras' ? 'active' : ''; ?>" href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=extras'); ?>">Extras</a></li>
+    <li><a class="<?php echo ($_GET['tab'] ?? '') === 'reports' ? 'active' : ''; ?>" href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=reports'); ?>">Reports</a></li>
+    <li><a class="<?php echo ($_GET['tab'] ?? '') === 'customers' ? 'active' : ''; ?>" href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=customers'); ?>">Customers</a></li>
+</ul>
+<?php endif; ?>
+
 
             <!-- RIGHT CONTENT -->
             <div class="afd-right-box">

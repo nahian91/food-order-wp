@@ -1,126 +1,146 @@
 <?php
-/*-----------------------------------------
-# List All Categories (Classic WP Table Style + Bulk Actions + Delete Button)
------------------------------------------*/
-function fd_category_list(){
+if (!defined('ABSPATH')) exit;
 
-    $page_slug = 'awesome_food_delivery'; // Correct menu slug
+/*--------------------------------------------------------------
+# Enqueue DataTable (Admin Only) - Optimized
+--------------------------------------------------------------*/
+add_action('admin_enqueue_scripts', function () {
+    if (!isset($_GET['page']) || $_GET['page'] !== 'awesome_food_delivery') return;
 
-    // Single Delete via URL
-    if(isset($_GET['delete']) && current_user_can('manage_options')){
+    wp_enqueue_style('fd-datatable-css', 'https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css');
+    wp_enqueue_script('fd-datatable-js', 'https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js', ['jquery'], null, true);
+});
+
+/*--------------------------------------------------------------
+# List All Categories - Restaurant Red UI
+--------------------------------------------------------------*/
+function fd_category_list() {
+    $page_slug = 'awesome_food_delivery';
+
+    // Single Delete Logic
+    if (isset($_GET['delete']) && current_user_can('manage_options')) {
         $term_id = intval($_GET['delete']);
-        $nonce = $_GET['_wpnonce'] ?? '';
-        if(wp_verify_nonce($nonce,'fd_delete_cat_'.$term_id)){
-            wp_delete_term($term_id,'food_category');
-            echo '<div class="notice notice-success is-dismissible"><p>Category deleted.</p></div>';
-        } else {
-            echo '<div class="notice notice-error"><p>Security check failed!</p></div>';
+        $nonce   = $_GET['_wpnonce'] ?? '';
+        if (wp_verify_nonce($nonce, 'fd_delete_cat_' . $term_id)) {
+            wp_delete_term($term_id, 'food_category');
+            echo '<div class="notice notice-success is-dismissible" style="border-left-color: #d63638;"><p>Category removed successfully.</p></div>';
         }
     }
 
-    // Bulk Delete
-    if(isset($_POST['action']) && $_POST['action']=='delete' && !empty($_POST['category']) && current_user_can('manage_options')){
-        $bulk_nonce = $_POST['fd_bulk_delete_nonce'] ?? '';
-        if(wp_verify_nonce($bulk_nonce,'fd_bulk_delete')){
-            foreach($_POST['category'] as $term_id){
-                wp_delete_term(intval($term_id),'food_category');
-            }
-            echo '<div class="notice notice-success is-dismissible"><p>Selected categories deleted.</p></div>';
-        } else {
-            echo '<div class="notice notice-error"><p>Security check failed!</p></div>';
-        }
-    }
-
-    $per_page = 20;
-    $current_page = max(1,intval($_GET['paged'] ?? 1));
-    $offset = ($current_page-1)*$per_page;
-
-    $terms = get_terms([
-        'taxonomy'=>'food_category',
-        'hide_empty'=>false,
-        'number'=>$per_page,
-        'offset'=>$offset
-    ]);
-
-    $total = wp_count_terms('food_category',['hide_empty'=>false]);
-    $total_pages = ceil($total/$per_page);
+    $terms = get_terms(['taxonomy' => 'food_category', 'hide_empty' => false]);
     ?>
 
-    <form method="post">
-        <?php wp_nonce_field('fd_bulk_delete','fd_bulk_delete_nonce'); ?>
+    <style>
+        :root { 
+            --res-primary: #d63638; 
+            --res-dark: #1d2327;    
+            --res-border: #ccd0d4; 
+        }
 
-        <div class="tablenav top">
-            <div class="alignleft actions">
-                <select name="action">
-                    <option value="">Bulk Actions</option>
-                    <option value="delete">Delete</option>
-                </select>
-                <input type="submit" class="button action" value="Apply">
-            </div>
+        /* Table Modernization */
+        #fd-category-table { border: 1px solid var(--res-border); border-radius: 8px; overflow: hidden; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,.05); }
+        #fd-category-table thead th { background: #fafafa; padding: 15px; font-weight: 700; color: #50575e; border-bottom: 2px solid #f0f0f1; text-transform: uppercase; font-size: 11px; }
+        #fd-category-table td { padding: 15px; vertical-align: middle; border-bottom: 1px solid #f0f0f1; }
+        
+        /* Category Image */
+        .fd-cat-thumb { width: 54px; height: 54px; border-radius: 8px; object-fit: cover; border: 1px solid #eee; }
+        .fd-cat-no-img { width: 54px; height: 54px; border-radius: 8px; background: #f6f7f7; display: flex; align-items: center; justify-content: center; color: #c3c4c7; border: 1px solid #eee; }
+
+        /* Restaurant Buttons */
+        .fd-btn { padding: 6px 14px; border-radius: 4px; text-decoration: none; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; transition: 0.2s; border: 1px solid #dcdcde; background: #fff; color: #2c3338; }
+        .fd-btn:hover { border-color: var(--res-primary); color: var(--res-primary); background: #fff9f9; }
+        
+        .fd-btn-danger:hover { color: #fff; border-color: var(--res-primary); background: var(--res-primary); }
+        .fd-btn-danger .dashicons { transition: 0.2s; }
+        .fd-btn-danger:hover .dashicons { color: #fff !important; }
+
+        /* Items Count Badge */
+        .fd-count-badge { background: #f0f0f1; color: #3c434a; font-weight: 700; font-size: 11px; padding: 3px 10px; border-radius: 12px; border: 1px solid #dcdcde; }
+
+        /* DataTable Search Fixes */
+        .dataTables_wrapper .dataTables_filter { float: none; text-align: left; }
+        .dataTables_wrapper .dataTables_filter input { border: 1px solid #c3c4c7; border-radius: 4px; padding: 8px 12px; margin-bottom: 20px; width: 300px; transition: 0.2s; }
+        .dataTables_wrapper .dataTables_filter input:focus { border-color: var(--res-primary); box-shadow: 0 0 0 1px var(--res-primary); outline: none; }
+        
+        .dataTables_wrapper .dataTables_paginate .paginate_button.current { background: var(--res-primary) !important; color: #fff !important; border: 1px solid var(--res-primary) !important; border-radius: 4px; }
+    </style>
+
+    <div class="wrap" style="margin-top: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h1 style="margin:0; font-weight: 700;"><?php esc_html_e('Food Categories', 'text-domain'); ?></h1>
+            <a href="<?php echo admin_url("admin.php?page=$page_slug&tab=categories&sub=add"); ?>" class="button button-primary" style="background:var(--res-primary); border-color:var(--res-primary); font-weight:600; padding: 0 20px;">+ Add New Category</a>
         </div>
 
-        <table class="wp-list-table widefat fixed striped">
+        <table id="fd-category-table" class="widefat">
             <thead>
                 <tr>
-                    <th scope="col" class="manage-column check-column"><input type="checkbox" /></th>
-                    <th scope="col">Image</th>
-                    <th scope="col">Name</th>
-                    <th scope="col">Actions</th>
+                    <th width="85">Thumbnail</th>
+                    <th>Category Name</th>
+                    <th>Items Linked</th>
+                    <th width="200" style="text-align: right;">Actions</th>
                 </tr>
             </thead>
             <tbody>
-            <?php if($terms && !is_wp_error($terms)): ?>
-                <?php foreach($terms as $term): 
-                    $img = get_term_meta($term->term_id,'fd_category_image',true);
-
-                    // Correct URLs for menu page
-                    $edit_url   = add_query_arg(['tab'=>'categories','sub'=>'add','edit'=>$term->term_id], admin_url('admin.php?page='.$page_slug));
-                    $view_url   = add_query_arg(['tab'=>'categories','sub'=>'view','item'=>$term->term_id], admin_url('admin.php?page='.$page_slug));
-                    $delete_url = wp_nonce_url(add_query_arg(['tab'=>'categories','sub'=>'all','delete'=>$term->term_id], admin_url('admin.php?page='.$page_slug)), 'fd_delete_cat_'.$term->term_id);
+            <?php if (!empty($terms) && !is_wp_error($terms)) : ?>
+                <?php foreach ($terms as $term) :
+                    $img_id = get_term_meta($term->term_id, 'fd_category_image', true);
+                    $edit_url = admin_url("admin.php?page=$page_slug&tab=categories&sub=add&edit={$term->term_id}");
+                    $delete_url = wp_nonce_url(admin_url("admin.php?page=$page_slug&tab=categories&sub=all&delete={$term->term_id}"), 'fd_delete_cat_' . $term->term_id);
                 ?>
                 <tr>
-                    <th class="check-column"><input type="checkbox" name="category[]" value="<?php echo esc_attr($term->term_id); ?>"/></th>
-                    <td><?php echo $img ? wp_get_attachment_image($img,[60,60]) : '-'; ?></td>
-                    <td><?php echo esc_html($term->name); ?></td>
                     <td>
-                        <a class="button afd-btn-view" href="<?php echo esc_url($view_url); ?>">View</a>
-                        <a class="button afd-btn-edit" href="<?php echo esc_url($edit_url); ?>">Edit</a>
-                        <a class="button afd-btn-delete" href="<?php echo esc_url($delete_url); ?>" onclick="return confirm('Delete this category?')">Delete</a>
+                        <?php if ($img_id) : 
+                            echo wp_get_attachment_image($img_id, [60, 60], false, ['class' => 'fd-cat-thumb']);
+                        else : ?>
+                            <div class="fd-cat-no-img"><span class="dashicons dashicons-format-image"></span></div>
+                        <?php endif; ?>
+                    </td>
+
+                    <td>
+                        <strong style="font-size:15px; color: var(--res-dark);"><?php echo esc_html($term->name); ?></strong><br>
+                        <code style="background:none; padding:0; color: #a7aaad;">slug: <?php echo esc_html($term->slug); ?></code>
+                    </td>
+
+                    <td>
+                        <span class="fd-count-badge">
+                            <?php echo $term->count; ?> Products
+                        </span>
+                    </td>
+
+                    <td style="text-align: right;">
+                        <a class="fd-btn" href="<?php echo esc_url($edit_url); ?>">
+                            <span class="dashicons dashicons-edit" style="font-size:16px; margin-top:3px;"></span> Edit
+                        </a>
+                        <a class="fd-btn fd-btn-danger" 
+                           href="<?php echo esc_url($delete_url); ?>" 
+                           onclick="return confirm('Careful! This category and its links will be removed. Continue?')">
+                            <span class="dashicons dashicons-trash" style="font-size:16px; margin-top:3px; color: var(--res-primary);"></span> Delete
+                        </a>
                     </td>
                 </tr>
                 <?php endforeach; ?>
-            <?php else: ?>
-                <tr><td colspan="4">No categories found.</td></tr>
             <?php endif; ?>
             </tbody>
         </table>
-
-        <div class="tablenav bottom">
-            <div class="tablenav-pages">
-                <?php
-                for($i=1;$i<=$total_pages;$i++){
-                    $class = $i==$current_page ? 'page-numbers current' : 'page-numbers';
-                    $page_url = add_query_arg(['paged'=>$i]);
-                    echo '<a class="'.$class.'" href="'.esc_url($page_url).'">'.$i.'</a> ';
-                }
-                ?>
-            </div>
-        </div>
-    </form>
+    </div>
 
     <script>
-    // Toggle all checkboxes
-    document.addEventListener('DOMContentLoaded', function(){
-        const topCheck = document.querySelector('.check-column input[type="checkbox"]');
-        if(topCheck){
-            topCheck.addEventListener('change', function(){
-                document.querySelectorAll('tbody .check-column input[type="checkbox"]').forEach(cb=>{
-                    cb.checked = topCheck.checked;
-                });
-            });
-        }
+    jQuery(document).ready(function ($) {
+        $('#fd-category-table').DataTable({
+            pageLength: 10,
+            ordering: true,
+            searching: true,
+            language: {
+                search: "",
+                searchPlaceholder: "Search categories...",
+                paginate: { next: '→', previous: '←' }
+            },
+            columnDefs: [
+                { orderable: false, targets: [0, 3] }
+            ],
+            dom: '<"top"f>rt<"bottom"ip><"clear">'
+        });
     });
     </script>
-
 <?php
 }
