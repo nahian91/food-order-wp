@@ -265,13 +265,14 @@ add_action('admin_menu', function(){
 function fd_main_page(){
 
     $tabs = [
-        'dashboard' => 'Dashboard',
-        'orders'    => 'Orders',
-        'items'     => 'Items',
-        'categories'=> 'Categories',
-        'extras'    => 'Extras',
-        'reports'   => 'Reports',
-        'customers' => 'Customers'
+        'dashboard'  => 'Dashboard',
+        'orders'     => 'Orders',
+        'items'      => 'Items',
+        'categories' => 'Categories',
+        'extras'     => 'Extras',
+        'reports'    => 'Reports',
+        'customers'  => 'Customers',
+        'settings'   => 'Settings' // 1. Added to array
     ];
 
     $active = $_GET['tab'] ?? 'dashboard';
@@ -279,33 +280,33 @@ function fd_main_page(){
 
     <div class="awesome-food-delivery">
 
-            <?php
-// Only show sidebar if NOT a print page
-if (!(isset($_GET['action']) && $_GET['action'] === 'print')) :
-?>
-<ul class="afd-left-tabs">
-    <li><a class="<?php echo ($_GET['tab'] ?? '') === 'dashboard' ? 'active' : ''; ?>" href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=dashboard'); ?>">Dashboard</a></li>
-    <li><a class="<?php echo ($_GET['tab'] ?? '') === 'orders' ? 'active' : ''; ?>" href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=orders'); ?>">Orders</a></li>
-    <li><a class="<?php echo ($_GET['tab'] ?? '') === 'items' ? 'active' : ''; ?>" href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=items'); ?>">Items</a></li>
-    <li><a class="<?php echo ($_GET['tab'] ?? '') === 'categories' ? 'active' : ''; ?>" href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=categories'); ?>">Categories</a></li>
-    <li><a class="<?php echo ($_GET['tab'] ?? '') === 'extras' ? 'active' : ''; ?>" href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=extras'); ?>">Extras</a></li>
-    <li><a class="<?php echo ($_GET['tab'] ?? '') === 'reports' ? 'active' : ''; ?>" href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=reports'); ?>">Reports</a></li>
-    <li><a class="<?php echo ($_GET['tab'] ?? '') === 'customers' ? 'active' : ''; ?>" href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=customers'); ?>">Customers</a></li>
-</ul>
-<?php endif; ?>
+        <?php
+        // Only show sidebar if NOT a print page
+        if (!(isset($_GET['action']) && $_GET['action'] === 'print')) :
+        ?>
+        <ul class="afd-left-tabs">
+            <li><a class="<?php echo ($active === 'dashboard') ? 'active' : ''; ?>" href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=dashboard'); ?>">Dashboard</a></li>
+            <li><a class="<?php echo ($active === 'orders') ? 'active' : ''; ?>" href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=orders'); ?>">Orders</a></li>
+            <li><a class="<?php echo ($active === 'items') ? 'active' : ''; ?>" href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=items'); ?>">Items</a></li>
+            <li><a class="<?php echo ($active === 'categories') ? 'active' : ''; ?>" href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=categories'); ?>">Categories</a></li>
+            <li><a class="<?php echo ($active === 'extras') ? 'active' : ''; ?>" href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=extras'); ?>">Extras</a></li>
+            <li><a class="<?php echo ($active === 'reports') ? 'active' : ''; ?>" href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=reports'); ?>">Reports</a></li>
+            <li><a class="<?php echo ($active === 'customers') ? 'active' : ''; ?>" href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=customers'); ?>">Customers</a></li>
+            <li><a class="<?php echo ($active === 'settings') ? 'active' : ''; ?>" href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=settings'); ?>">Settings</a></li>
+        </ul>
+        <?php endif; ?>
 
-
-            <!-- RIGHT CONTENT -->
             <div class="afd-right-box">
                 <?php
                 switch($active){
-                    case 'dashboard': fd_dashboard_tab(); break;
-                    case 'orders': fd_orders_tab(); break;
-                    case 'items': fd_items_tab(); break;
+                    case 'dashboard':  fd_dashboard_tab(); break;
+                    case 'orders':     fd_orders_tab(); break;
+                    case 'items':      fd_items_tab(); break;
                     case 'categories': fd_category_tab(); break;
-                    case 'extras': fd_extras_tab(); break;
-                    case 'reports': fd_reports_tab(); break;
-                    case 'customers': fd_customers_tab(); break;
+                    case 'extras':     fd_extras_tab(); break;
+                    case 'reports':    fd_reports_tab(); break;
+                    case 'customers':  fd_customers_tab(); break;
+                    case 'settings':   fd_settings_tab(); break;
                 }
                 ?>
             </div>
@@ -321,6 +322,7 @@ require_once get_template_directory() . '/inc/categories.php';
 require_once get_template_directory() . '/inc/extras.php';
 require_once get_template_directory() . '/inc/report.php';
 require_once get_template_directory() . '/inc/customers.php';
+require_once get_template_directory() . '/inc/settings.php';
 require_once get_template_directory() . '/inc/frontend.php';
 
 add_action('admin_head', function() {
