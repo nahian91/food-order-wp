@@ -31,7 +31,7 @@
                         <h4 class="widget-title">Quick Links</h4>
                         <?php
 wp_nav_menu([
-    'theme_location' => 'footer']);
+    'theme_location' => 'menu-2']);
 ?>
                     </div>
                 </div>
