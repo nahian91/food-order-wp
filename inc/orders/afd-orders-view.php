@@ -4,7 +4,7 @@
  */
 if (!defined('ABSPATH')) exit;
 
-// Fetch Data with afon_ prefix
+// Fetch Data
 $afon_customer_name    = get_post_meta($order_id, 'customer_name', true);
 $afon_customer_phone   = get_post_meta($order_id, 'customer_phone', true);
 $afon_customer_address = get_post_meta($order_id, 'customer_address', true);
@@ -43,11 +43,21 @@ $afon_total            = get_post_meta($order_id, 'total_price', true);
                             foreach($afon_items as $afon_item): 
                                 $afon_qty = isset($afon_item['qty']) ? intval($afon_item['qty']) : 1;
                                 $afon_price = isset($afon_item['price']) ? floatval($afon_item['price']) : 0;
+
+                                // FIX: Check multiple possible keys for the item name
+                                $display_name = 'Unknown Item';
+                                if (!empty($afon_item['name'])) {
+                                    $display_name = $afon_item['name'];
+                                } elseif (!empty($afon_item['item_name'])) {
+                                    $display_name = $afon_item['item_name'];
+                                } elseif (!empty($afon_item['title'])) {
+                                    $display_name = $afon_item['title'];
+                                }
                         ?>
                             <tr>
                                 <td>
                                     <span class="afon-qty-badge"><?php echo $afon_qty; ?></span>
-                                    <strong class="afon-item-name-bold"><?php echo esc_html($afon_item['name']); ?></strong>
+                                    <strong class="afon-item-name-bold"><?php echo esc_html($display_name); ?></strong>
                                 </td>
                                 <td class="afon-text-center afon-text-muted">&times; <?php echo $afon_qty; ?></td>
                                 <td class="afon-text-right">

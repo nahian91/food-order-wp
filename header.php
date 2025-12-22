@@ -99,20 +99,35 @@
         <div class="container">
             <div class="row align-center">
                 <div class="col-lg-7">
+                    <?php 
+                        $header_phone = get_field('header_phone', 'option');
+                        $header_email = get_field('header_email', 'option');
+                    ?>
                     <ul class="item-flex">
-                        <li><a href="tel:+4733378901"><img src="<?php echo get_template_directory_uri();?>/assets/img/icon/10.png" alt="Icon"> Phone: +4733378901</a></li>
-                        <li><a href="mailto:food@restan.com"><img src="<?php echo get_template_directory_uri();?>/assets/img/icon/11.png" alt="Icon"> Email: food@restan.com</a></li>
+                        <li><a href="tel:<?php echo $header_phone;?>"><img src="<?php echo get_template_directory_uri();?>/assets/img/icon/10.png" alt="Icon"> Phone: <?php echo $header_phone;?></a></li>
+                        <li><a href="mailto:<?php echo $header_email;?>"><img src="<?php echo get_template_directory_uri();?>/assets/img/icon/11.png" alt="Icon"> Email: <?php echo $header_email;?></a></li>
                     </ul>
                 </div>
                 <div class="col-lg-5 text-end">
                     <div class="social">
-                        <ul>
-                            <li><a href="#"><i class="fab fa-facebook-f"></i></a></li>
-                            <li><a href="#"><i class="fab fa-twitter"></i></a></li>
-                            <li><a href="#"><i class="fab fa-youtube"></i></a></li>
-                            <li><a href="#"><i class="fab fa-linkedin-in"></i></a></li>
-                        </ul>
-                    </div>
+    <?php 
+    $header_socials = get_field('header_socials', 'option');
+    
+    if ( $header_socials ) : ?>
+        <ul>
+            <?php foreach ( $header_socials as $social ) : 
+                $icon_data = $social['header_social_icon'];
+                $url = $social['header_social_icon_url'];
+                ?>
+                <li>
+                    <a href="<?php echo esc_url($url); ?>" target="_blank">
+                        <span class="dashicons <?php echo esc_attr($icon_data['value']); ?>"></span>
+                    </a>
+                </li>
+            <?php endforeach; ?>
+        </ul>
+    <?php endif; ?>
+</div>
                 </div>
             </div>
         </div>

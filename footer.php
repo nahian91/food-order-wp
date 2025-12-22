@@ -42,23 +42,25 @@ wp_nav_menu([
                     <div class="f-item contact">
                         <h4 class="widget-title">Contact Info</h4>
                         <ul>
-                                    <?php 
-                                        $contact_info = get_field('contact_info', 'option');
-                                        foreach ($contact_info as $info) {
-                                            ?>
-                                                <li class="wow fadeInUp" style="visibility: visible; animation-name: fadeInUp; margin-bottom:30px">
-                                        <div class="icon">
-                                            <i class="<?php echo $info['contact_info_icon'];?>"></i>
-                                        </div>
-                                        <div class="content">
-                                            <h5 class=""><?php echo $info['contact_info_title'];?></h5>
-                                            <a href=""><?php echo $info['contact_info_description'];?></a>
-                                        </div>
-                                    </li>
-                                            <?php 
-                                        }
-                                    ?>
-                                </ul>
+    <?php 
+    $contact_info = get_field('contact_info', 'option');
+
+    if ( $contact_info ) :
+        foreach ( $contact_info as $info ) : ?>
+            <li class="wow fadeInUp" style="visibility: visible; animation-name: fadeInUp; margin-bottom:30px">
+                <div class="icon">
+                    <span class="dashicons <?php echo esc_attr($info['contact_info_icon']); ?>"></span>
+                </div>
+                <div class="content">
+                    <h5><?php echo esc_html($info['contact_info_title']); ?></h5>
+                    <a href="#"><?php echo esc_html($info['contact_info_description']); ?></a>
+                </div>
+            </li>
+        <?php 
+        endforeach; 
+    endif; 
+    ?>
+</ul>
                     </div>
                 </div>
                 <!-- End Singel Item -->
@@ -74,26 +76,6 @@ wp_nav_menu([
                             <input type="email" placeholder="Your Email" class="form-control" name="email">
                             <button type="submit"> Subscribe <i class="fas fa-long-arrow-right"></i></button>  
                         </form>
-                        <div class="footer-socila-items mt-30">
-                            <h4>Social Meida: </h4>
-                            <ul class="footer-social">
-                                <li>
-                                    <a href="#">
-                                        <i class="fab fa-facebook-f"></i>
-                                    </a>
-                                </li>
-                                <li>
-                                    <a href="#">
-                                        <i class="fab fa-instagram"></i>
-                                    </a>
-                                </li>
-                                <li>
-                                    <a href="#">
-                                        <i class="fab fa-linkedin-in"></i>
-                                    </a>
-                                </li>
-                            </ul>
-                        </div>
                     </div>
                 </div>
                 <!-- End Singel Item -->
