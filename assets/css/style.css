@@ -10992,3 +10992,9 @@ img.dark-img {
   padding: 0;
   font-size: 30px;
 }
+
+.f-item.contact ul li {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}

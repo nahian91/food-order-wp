@@ -283,132 +283,116 @@ add_shortcode('fd_food_items','fd_food_items_shortcode');
 
 
 function food_best_sellers_shortcode() {
-    ob_start(); ?>
+    ob_start();
+
+    // 1. Get Categories marked as Featured using your exact meta key 'fd_is_featured'
+    $featured_categories = get_terms([
+        'taxonomy'   => 'food_category',
+        'hide_empty' => true,
+        'meta_query' => [
+            [
+                'key'     => 'fd_is_featured',
+                'value'   => '1',
+                'compare' => '='
+            ]
+        ]
+    ]);
+
+    // Fallback: If no categories are toggled "Featured", show the first 2 available
+    if (empty($featured_categories) || is_wp_error($featured_categories)) {
+        $featured_categories = get_terms([
+            'taxonomy'   => 'food_category',
+            'hide_empty' => true,
+            'number'     => 2
+        ]);
+    }
+    ?>
 
     <div class="container pb-5">
         <div class="row">
             <div class="col-lg-8 offset-lg-2">
                 <div class="site-heading text-center">
-                    <h4 class="sub-title">Awesome Food</h4>
-                    <h2 class="title split-text">Popular Food of our Menus</h2>
-                    
+                    <h4 class="sub-title" style="color: #d63638; font-weight: 600;">Awesome Food</h4>
+                    <h2 class="title">Popular Food of our Menus</h2>
                     <div class="mt-4 mb-5">
-                        <a href="<?php echo home_url('/menu'); ?>" class="btn-all-menus">
-                            VIEW ALL MENUS
-                        </a>
+                        <a href="<?php echo home_url('/menu'); ?>" class="btn-all-menus">VIEW ALL MENUS</a>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div class="row mb-4">
-            <div class="col-lg-6">
-                <div id="cat-set-meals" class="food-menu-style-two-content food-menu" style="margin-left: 0;">
-                    <h4 class="sub-heading">Set Meals</h4>
-                    <ul class="meal-items">
-                        <li>
-                            <div class="thumbnail"><img src="<?php echo get_template_directory_uri(); ?>/assets/img/food/1.jpg" alt=""></div>
-                            <div class="content">
-                                <div class="top"><div class="title"><h4>Meal for 1 Person</h4></div><div class="price"><span>£16.50</span></div></div>
-                                <div class="bottom"><p>Tandoori chicken, tikka masala, vegetable curry, rice & nan.</p></div>
-                            </div>
-                        </li>
-                        <li>
-                            <div class="thumbnail"><img src="<?php echo get_template_directory_uri(); ?>/assets/img/food/2.jpg" alt=""></div>
-                            <div class="content">
-                                <div class="top"><div class="title"><h4>Thali for 2</h4></div><div class="price"><span>£24.50</span></div></div>
-                                <div class="bottom"><p>Chicken tikka, bhaji, lamb bhuna, chicken curry & naan.</p></div>
-                            </div>
-                        </li>
-                    </ul>
-                </div>
-            </div>
-            <div class="col-lg-6">
-                <div id="cat-our-specialties" class="food-menu-style-two-content food-menu" style="margin-left: 0;">
-                    <h4 class="sub-heading">Our Specialties</h4>
-                    <ul class="meal-items">
-                        <li>
-                            <div class="thumbnail"><img src="<?php echo get_template_directory_uri(); ?>/assets/img/food/3.jpg" alt=""></div>
-                            <div class="content">
-                                <div class="top"><div class="title"><h4>King Prawn Masala</h4></div><div class="price"><span>£12.95</span></div></div>
-                                <div class="bottom"><p>Fresh king prawns cooked in a spicy masala sauce with peppers.</p></div>
-                            </div>
-                        </li>
-                        <li>
-                            <div class="thumbnail"><img src="<?php echo get_template_directory_uri(); ?>/assets/img/food/1.jpg" alt=""></div>
-                            <div class="content">
-                                <div class="top"><div class="title"><h4>Lamb Tikka Masala</h4></div><div class="price"><span>£10.95</span></div></div>
-                                <div class="bottom"><p>Tender lamb chunks cooked in creamy tomato masala sauce.</p></div>
-                            </div>
-                        </li>
-                    </ul>
-                </div>
-            </div>
-        </div>
-
         <div class="row">
-            <div class="col-lg-6">
-                <div id="cat-starters" class="food-menu-style-two-content food-menu" style="margin-left: 0;">
-                    <h4 class="sub-heading">Starters</h4>
-                    <ul class="meal-items">
-                        <li>
-                            <div class="thumbnail"><img src="<?php echo get_template_directory_uri(); ?>/assets/img/food/2.jpg" alt=""></div>
-                            <div class="content">
-                                <div class="top"><div class="title"><h4>Onion Bhaji</h4></div><div class="price"><span>£4.50</span></div></div>
-                                <div class="bottom"><p>Spicy onions fried in a crisp batter - a classic favorite.</p></div>
-                            </div>
-                        </li>
-                        <li>
-                            <div class="thumbnail"><img src="<?php echo get_template_directory_uri(); ?>/assets/img/food/3.jpg" alt=""></div>
-                            <div class="content">
-                                <div class="top"><div class="title"><h4>Chicken Chat</h4></div><div class="price"><span>£5.50</span></div></div>
-                                <div class="bottom"><p>Pieces of chicken cooked in a medium spiced sour sauce.</p></div>
-                            </div>
-                        </li>
-                    </ul>
+            <?php 
+            foreach ($featured_categories as $cat) : 
+                
+                // 2. Fetch 3 Random items using your exact post_type 'food_item'
+                $products = new WP_Query([
+                    'post_type'      => 'food_item', 
+                    'posts_per_page' => 3,
+                    'orderby'        => 'rand',
+                    'tax_query'      => [[
+                        'taxonomy' => 'food_category',
+                        'field'    => 'term_id',
+                        'terms'    => $cat->term_id,
+                    ]],
+                ]);
+
+                if ($products->have_posts()) :
+            ?>
+                <div class="col-lg-6 mb-5">
+                    <div class="food-menu-style-two-content food-menu">
+                        <h4 class="sub-heading" style="border-left: 4px solid #d63638; padding-left: 15px; margin-bottom: 25px; font-weight:700; text-transform: uppercase;">
+                            <?php echo esc_html($cat->name); ?>
+                        </h4>
+                        
+                        <ul class="meal-items" style="padding: 0; margin: 0;">
+                            <?php 
+                            while ($products->have_posts()) : $products->the_post(); 
+                                // Using your exact meta key 'price'
+                                $price = get_post_meta(get_the_ID(), 'price', true); 
+                            ?>
+                                <li style="list-style: none; display: flex; align-items: flex-start; margin-bottom: 25px;">
+                                    <div class="thumbnail" style="flex-shrink: 0; margin-right: 20px;">
+                                        <?php if (has_post_thumbnail()) : 
+                                            the_post_thumbnail([70, 70], ['style' => 'width:70px; height:70px; object-fit:cover; border-radius:8px;']); 
+                                        else : ?>
+                                            <div style="width:70px; height:70px; background:#f0f0f0; border-radius:8px; display:flex; align-items:center; justify-content:center;">
+                                                <span class="dashicons dashicons-format-image" style="color:#ccc;"></span>
+                                            </div>
+                                        <?php endif; ?>
+                                    </div>
+                                    <div class="content" style="flex-grow: 1;">
+                                        <div class="top" style="display: flex; justify-content: space-between; border-bottom: 1px dashed #ddd; margin-bottom: 5px; align-items: baseline;">
+                                            <div class="title"><h4 style="margin:0; font-size:17px; font-weight:600;"><?php the_title(); ?></h4></div>
+                                            <div class="price"><span style="color:#d63638; font-weight:700;">
+                                                <?php echo $price ? '£' . number_format(floatval($price), 2) : ''; ?>
+                                            </span></div>
+                                        </div>
+                                        <div class="bottom">
+                                            <p style="margin:0; font-size:14px; color:#666; line-height: 1.4;">
+                                                <?php echo wp_trim_words(get_the_excerpt(), 12); ?>
+                                            </p>
+                                        </div>
+                                    </div>
+                                </li>
+                            <?php 
+                                endwhile; 
+                                wp_reset_postdata(); 
+                            ?>
+                        </ul>
+                    </div>
                 </div>
-            </div>
-            <div class="col-lg-6">
-                <div id="cat-rice-bread" class="food-menu-style-two-content food-menu" style="margin-left: 0;">
-                    <h4 class="sub-heading">Rice & Breads</h4>
-                    <ul class="meal-items">
-                        <li>
-                            <div class="thumbnail"><img src="<?php echo get_template_directory_uri(); ?>/assets/img/food/1.jpg" alt=""></div>
-                            <div class="content">
-                                <div class="top"><div class="title"><h4>Pilau Rice</h4></div><div class="price"><span>£3.50</span></div></div>
-                                <div class="bottom"><p>Fragrant basmati rice cooked with aromatic spices.</p></div>
-                            </div>
-                        </li>
-                        <li>
-                            <div class="thumbnail"><img src="<?php echo get_template_directory_uri(); ?>/assets/img/food/2.jpg" alt=""></div>
-                            <div class="content">
-                                <div class="top"><div class="title"><h4>Garlic Naan</h4></div><div class="price"><span>£3.20</span></div></div>
-                                <div class="bottom"><p>Freshly baked leavened bread with a garlic topping.</p></div>
-                            </div>
-                        </li>
-                    </ul>
-                </div>
-            </div>
+            <?php 
+                endif; 
+            endforeach; 
+            ?>
         </div>
     </div>
 
     <style>
-        .btn-all-menus {
-            background: #d63638;
-            color: #fff !important;
-            padding: 12px 35px;
-            border-radius: 5px;
-            font-weight: 700;
-            text-transform: uppercase;
-            text-decoration: none;
-            display: inline-block;
-            transition: 0.3s;
-        }
-        .btn-all-menus:hover { background: #111; color: #fff !important; }
-        .meal-items li { margin-bottom: 25px; list-style: none; display: flex; align-items: flex-start; }
-        .meal-items .thumbnail { flex-shrink: 0; margin-right: 20px; }
-        .meal-items .content { flex-grow: 1; }
-        .meal-items .top { display: flex; justify-content: space-between; border-bottom: 1px dashed #ddd; margin-bottom: 5px; }
+        .btn-all-menus { background: #d63638; color: #fff !important; padding: 12px 35px; border-radius: 5px; font-weight: 700; text-transform: uppercase; text-decoration: none; display: inline-block; transition: 0.3s; }
+        .btn-all-menus:hover { background: #111; }
+        .sub-heading { font-size: 20px; color: #1d2327; }
     </style>
 
     <?php
@@ -422,7 +406,7 @@ function fd_dynamic_category_carousel_shortcode() {
     // Get terms from your specific taxonomy 'food_category'
     $terms = get_terms([
         'taxonomy'   => 'food_category',
-        'hide_empty' => false, // Set to true if you only want categories with items
+        'hide_empty' => false,
     ]);
 
     if (empty($terms) || is_wp_error($terms)) return '';
@@ -453,10 +437,13 @@ function fd_dynamic_category_carousel_shortcode() {
                                 // Get the image ID from your custom meta 'fd_category_image'
                                 $img_id = get_term_meta($term->term_id, 'fd_category_image', true);
                                 $img_url = $img_id ? wp_get_attachment_image_url($img_id, 'large') : get_template_directory_uri() . '/assets/img/category/1.jpg';
+                                
+                                // Link to specific category anchor on menu page
+                                $target_link = home_url('/menu/#cat-' . $term->slug);
                                 ?>
                                 <div class="swiper-slide">
                                     <div class="food-cat-item">
-                                        <a href="<?php echo get_term_link($term); ?>" style="background-image: url(<?php echo esc_url($img_url); ?>);">
+                                        <a href="<?php echo esc_url($target_link); ?>" style="background-image: url(<?php echo esc_url($img_url); ?>);">
                                             <h4><?php echo esc_html($term->name); ?></h4>
                                             <span><?php echo $term->count; ?> Items</span>
                                         </a>

@@ -16,17 +16,17 @@
         <div class="container">
             <div class="row">
                 <!-- Singel Item -->
-                <div class="col-lg-3 col-md-6 footer-item mt-50">
+                <div class="col-lg-4 col-md-6 footer-item mt-50">
                     <div class="f-item about">
                         <p>
-                            Discover culinary delights recipes and inspiration in our food haven.
+                            Welcome to Spice of India, where every dish tells a story of tradition, passion, and the vibrant culture of the East. Located in the heart of the community, we are dedicated to bringing you the true essence of Indian culinary arts, prepared with the finest ingredients and a pinch of love.
                         </p>                 
                     </div>
                 </div>
                 <!-- End Singel Item -->
 
                 <!-- Singel Item -->
-                <div class="col-lg-2 col-md-6 mt-50 footer-item pl-50 pl-md-15 pl-xs-15">
+                <div class="col-lg-3 col-md-6 mt-50 footer-item pl-50 pl-md-15 pl-xs-15">
                     <div class="f-item link">
                         <h4 class="widget-title">Quick Links</h4>
                         <?php
@@ -38,7 +38,7 @@ wp_nav_menu([
                 <!-- End Singel Item -->
 
                 <!-- Singel Item -->
-                <div class="col-lg-3 col-md-6 footer-item  mt-50">
+                <div class="col-lg-5 col-md-6 footer-item  mt-50">
                     <div class="f-item contact">
                         <h4 class="widget-title">Contact Info</h4>
                         <ul>
@@ -61,21 +61,6 @@ wp_nav_menu([
     endif; 
     ?>
 </ul>
-                    </div>
-                </div>
-                <!-- End Singel Item -->
-
-                <!-- Singel Item -->
-                <div class="col-lg-4 col-md-6 footer-item mt-50">
-                    <div class="f-item newsletter">
-                        <h4 class="widget-title">Join Us</h4>
-                        <p>
-                            Join our subscribers list to get the latest news and special offers.
-                        </p>
-                        <form action="#">
-                            <input type="email" placeholder="Your Email" class="form-control" name="email">
-                            <button type="submit"> Subscribe <i class="fas fa-long-arrow-right"></i></button>  
-                        </form>
                     </div>
                 </div>
                 <!-- End Singel Item -->
