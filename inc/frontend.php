@@ -61,10 +61,10 @@ function fd_food_items_shortcode() {
     .fd-search-icon { position: absolute; left: 20px; top: 50%; transform: translateY(-50%); color: #aaa; font-size: 20px; }
 
     /* --- CATEGORY GRID --- */
-    .fd-category-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 25px; margin-bottom: 60px; }
+    .fd-category-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 5px; margin-bottom: 50px; }
     .fd-cat-grid-item { text-decoration: none !important; text-align: center; transition: 0.3s ease; display: block; }
     .fd-cat-grid-item:hover { transform: translateY(-5px); }
-    .fd-cat-grid-thumb { width: 100px; height: 100px; border-radius: 50%; background: #fff; margin: 0 auto 15px; overflow: hidden; border: 4px solid #fff; box-shadow: 0 10px 20px rgba(0,0,0,0.08); display: flex; align-items: center; justify-content: center; }
+    .fd-cat-grid-thumb { width: 50px; height: 50px; border-radius: 50%; background: #fff; margin: 0 auto 5px; overflow: hidden; border: 4px solid #fff; box-shadow: 0 10px 20px rgba(0,0,0,0.08); display: flex; align-items: center; justify-content: center; }
     .fd-cat-grid-thumb img { width: 100%; height: 100%; object-fit: cover; }
     .fd-cat-grid-item:hover .fd-cat-grid-thumb { border-color: #d63638; }
     .fd-cat-grid-item span { display: block; font-weight: 700; color: #1a1a1a; font-size: 15px; }
@@ -141,7 +141,9 @@ function fd_food_items_shortcode() {
                                     </div>
                                     <div class="bottom"><p><?php echo wp_kses_post($item->post_content); ?></p></div>
                                     <?php if($is_open): ?>
-                                        <button class="order-btn" data-name="<?php echo esc_attr($item->post_title); ?>" data-price="<?php echo esc_attr($price); ?>">Add to Order</button>
+                                        <div class="order-btn-align">
+                                            <button class="order-btn" data-name="<?php echo esc_attr($item->post_title); ?>" data-price="<?php echo esc_attr($price); ?>">Add to Order</button>
+                                        </div>
                                     <?php endif; ?>
                                 </div>
                             </li>
