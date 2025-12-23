@@ -45,7 +45,7 @@ $afon_customer_phone   = get_post_meta($afon_order_id, 'customer_phone', true);
 $afon_customer_address = get_post_meta($afon_order_id, 'customer_address', true);
 $afon_notes            = get_post_meta($afon_order_id, 'notes', true);
 $afon_status           = get_post_meta($afon_order_id, 'status', true) ?: 'pending';
-$afon_items            = get_post_meta($afon_order_id, 'items', true) ?: [];
+$afon_items            = get_post_meta($afon_order_id, 'order_items', true) ?: [];
 $afon_total_price      = get_post_meta($afon_order_id, 'total_price', true) ?: 0;
 ?>
 

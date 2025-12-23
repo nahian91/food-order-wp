@@ -87,34 +87,29 @@ $wp_time_format = get_option('time_format');
             <?php if (!empty($afon_orders)) : ?>
                 <?php foreach ($afon_orders as $afon_post) :
                     $order_id = $afon_post->ID;
-                    
-                    // Matches Thanks Page & Print logic
                     $display_id = get_the_title($order_id);
 
                     // Fetch Meta
-                    $customer = get_post_meta($order_id, 'customer_name', true);
-                    if (empty($customer)) {
-                        $customer = 'Guest Order #' . $order_id;
-                    }
-
+                    $customer = get_post_meta($order_id, 'customer_name', true) ?: 'Guest Order #' . $order_id;
                     $status = get_post_meta($order_id, 'status', true) ?: 'pending';
                     $status_slug = strtolower($status);
                     
                     // Navigation URLs
-                    $view_url   = admin_url('admin.php?page=awesome_food_delivery&tab=orders&order_id=' . $order_id . '&action=view');
-                    $edit_url   = admin_url('admin.php?page=awesome_food_delivery&tab=orders&order_id=' . $order_id . '&action=edit');
-                    
-                    // Print URLs (Linked to the fd_print_order_page function)
-                    $print_customer_url = admin_url('admin.php?page=awesome_food_delivery&tab=orders&order_id=' . $order_id . '&action=print&type=customer');
-                    $print_kitchen_url  = admin_url('admin.php?page=awesome_food_delivery&tab=orders&order_id=' . $order_id . '&action=print&type=kitchen');
+                    $base_url   = admin_url('admin.php?page=awesome_food_delivery&tab=orders&order_id=' . $order_id);
+                    $view_url   = $base_url . '&action=view';
+                    $edit_url   = $base_url . '&action=edit';
+                    $print_customer_url = $base_url . '&action=print&type=customer';
+                    $print_kitchen_url  = $base_url . '&action=print&type=kitchen';
                     
                     $delete_url = wp_nonce_url(
-                        admin_url('admin.php?page=awesome_food_delivery&tab=orders&order_id=' . $order_id . '&action=delete'),
+                        $base_url . '&action=delete',
                         'delete_order_' . $order_id
                     );
                 ?>
                     <tr>
-                        <td><span class="afon-id-badge"><?php echo esc_html($display_id); ?></span></td>
+                        <td data-order="<?php echo esc_attr($order_id); ?>">
+                            <span class="afon-id-badge"><?php echo esc_html($display_id); ?></span>
+                        </td>
                         <td>
                             <div class="afon-customer-name"><?php echo esc_html($customer); ?></div>
                             <span class="afon-order-time">
@@ -140,7 +135,7 @@ $wp_time_format = get_option('time_format');
                             
                             <a class="fd-btn fd-btn-delete" 
                                href="<?php echo esc_url($delete_url); ?>" 
-                               onclick="return confirm('Warning: This will permanently delete <?php echo $display_id; ?>. Continue?')">
+                               onclick="return confirm('Warning: This will permanently delete <?php echo esc_js($display_id); ?>. Continue?')">
                                  <span class="dashicons dashicons-trash"></span>
                             </a>
                         </td>
@@ -156,13 +151,15 @@ jQuery(document).ready(function($){
     if ($.fn.DataTable) {
         $('#afon-orders-table').DataTable({
             "pageLength": 15,
-            "order": [[0, "desc"]], // Default sort by Order ID descending
+            "order": [[0, "desc"]], 
             "dom": '<"top"f>rt<"bottom"ip><"clear">',
             "language": {
                 "search": "",
                 "searchPlaceholder": "Search orders (ID, Name, Date)..."
             },
-            "columnDefs": [ { "orderable": false, "targets": [3] } ] // Disable sorting on Actions column
+            "columnDefs": [ 
+                { "orderable": false, "targets": [3] }
+            ]
         });
     }
 });

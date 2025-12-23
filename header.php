@@ -80,21 +80,6 @@
         <?php endif; 
     } ?>
 
-    <div class="radio-btn-light"><div class="radio-inner-light"></div></div>
-    <div id="preloader">
-        <div id="restan-preloader" class="restan-preloader">
-            <div class="animation-preloader"><div class="spinner"></div></div>
-            <div class="loader">
-                <div class="row">
-                    <div class="col-3 loader-section section-left"><div class="bg"></div></div>
-                    <div class="col-3 loader-section section-left"><div class="bg"></div></div>
-                    <div class="col-3 loader-section section-right"><div class="bg"></div></div>
-                    <div class="col-3 loader-section section-right"><div class="bg"></div></div>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <div class="top-bar-area top-bar-style-one bg-theme text-light">
         <div class="container">
             <div class="row align-center">

@@ -70,24 +70,26 @@ $currency = '£';
             
             <?php if ($orders) : 
                 $order = $orders[0];
-                $order_id = $order->ID;
+                $order_post_id = $order->ID;
                 
-                /* FETCH ITEMS - Check both common keys to fix "Item Missing" 
-                */
-                $items = get_post_meta($order_id, 'order_items', true); 
+                // UPDATED: Get the custom Order ID title (e.g., order-12-23-001)
+                $display_id = get_the_title($order_post_id);
+                
+                /* FETCH ITEMS */
+                $items = get_post_meta($order_post_id, 'order_items', true); 
                 if (empty($items)) {
-                    $items = get_post_meta($order_id, 'items', true);
+                    $items = get_post_meta($order_post_id, 'items', true);
                 }
 
-                $subtotal = get_post_meta($order_id, 'subtotal', true);
-                $delivery = get_post_meta($order_id, 'delivery_fee', true); 
-                $total    = get_post_meta($order_id, 'total_price', true);
+                $subtotal = get_post_meta($order_post_id, 'subtotal', true);
+                $delivery = get_post_meta($order_post_id, 'delivery_fee', true); 
+                $total    = get_post_meta($order_post_id, 'total_price', true);
                 
-                $address  = get_post_meta($order_id, 'customer_address', true);
-                $phone    = get_post_meta($order_id, 'customer_phone', true);
-                $name     = get_post_meta($order_id, 'customer_name', true);
-                $notes    = get_post_meta($order_id, 'order_notes', true); 
-                $type     = get_post_meta($order_id, 'order_type', true);
+                $address  = get_post_meta($order_post_id, 'customer_address', true);
+                $phone    = get_post_meta($order_post_id, 'customer_phone', true);
+                $name     = get_post_meta($order_post_id, 'customer_name', true);
+                $notes    = get_post_meta($order_post_id, 'order_notes', true); 
+                $type     = get_post_meta($order_post_id, 'order_type', true);
             ?>
 
             <div class="card success-card">
@@ -95,7 +97,7 @@ $currency = '£';
                     <div class="mb-3" style="font-size: 50px;">🥘</div>
                     <h2 class="text-white">Thank You, <?php echo esc_html(explode(' ', $name)[0]); ?>!</h2>
                     <p class="mb-0 text-white">Your order has been received and is being processed.</p>
-                    <span class="order-id-badge">Order ID: #<?php echo esc_html($order_id); ?></span>
+                    <span class="order-id-badge">Order ID: #<?php echo esc_html($display_id); ?></span>
                 </div>
 
                 <div class="card-body p-4 p-md-5">
@@ -112,7 +114,7 @@ $currency = '£';
                         </div>
                         <div class="col-md-6 text-md-end">
                             <div class="detail-label">Order Date</div>
-                            <div class="detail-value"><?php echo get_the_date('F j, Y g:i a', $order_id); ?></div>
+                            <div class="detail-value"><?php echo get_the_date('F j, Y g:i a', $order_post_id); ?></div>
                             
                             <div class="detail-label">Status</div>
                             <div class="detail-value text-danger">Pending Confirmation</div>

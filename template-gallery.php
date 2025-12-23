@@ -36,9 +36,8 @@ get_header();?>
                         <div class="pf-item wow fadeInUp">
                             <div class="gallery-style-one">
                                 <div class="item">
-                                    <a href="<?php echo $gal['gallery_image'];?>" class="popup-gallery">
+                                    <a href="#" class="popup-gallery">
                                         <img src="<?php echo $gal['gallery_image'];?>" alt="">
-                                        <i class="fas fa-eye"></i>
                                     </a>
                                 </div>
                             </div>

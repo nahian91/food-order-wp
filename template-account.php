@@ -204,11 +204,13 @@ $user_address = get_user_meta($user_id, 'address', true);
                                         $order_status = get_post_meta($order->ID, 'order_status', true) ?: 'pending';
                                         $total        = get_post_meta($order->ID, 'total_price', true) ?: 0;
                                         $items        = get_post_meta($order->ID, 'order_items', true) ?: [];
+                                        // UPDATED: Get the custom Order ID title
+                                        $display_id   = get_the_title($order->ID);
                                     ?>
                                     <tr>
-                                        <td><strong>#<?php echo $order->ID; ?></strong></td>
+                                        <td><strong>#<?php echo esc_html($display_id); ?></strong></td>
                                         <td class="small text-muted"><?php echo get_the_date('j M, Y', $order->ID); ?></td>
-                                        <td><span class="status-badge status-<?php echo $order_status; ?>"><?php echo esc_html($order_status); ?></span></td>
+                                        <td><span class="status-badge status-<?php echo esc_attr($order_status); ?>"><?php echo esc_html($order_status); ?></span></td>
                                         <td class="fw-bold text-danger"><?php echo $currency . number_format($total, 2); ?></td>
                                         <td class="small text-muted">
                                             <?php if($items && is_array($items)): 

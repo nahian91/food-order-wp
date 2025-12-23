@@ -10,7 +10,7 @@ if (isset($_GET['action'], $_GET['order_id']) && $_GET['action'] === 'print') {
     $customer_address = get_post_meta($order_id, 'customer_address', true);
     $notes            = get_post_meta($order_id, 'notes', true);
     $status           = get_post_meta($order_id, 'status', true);
-    $items            = get_post_meta($order_id, 'items', true);
+    $items            = get_post_meta($order_id, 'order_items', true);
     $total            = get_post_meta($order_id, 'total_price', true);
     $order_date       = get_the_date('d/m/Y H:i', $order_id);
 

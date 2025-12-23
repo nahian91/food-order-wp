@@ -21,8 +21,13 @@ function fd_orders_tab() {
             break;
 
         case 'print':
-            if($order_id){
-                require plugin_dir_path(__FILE__) . 'orders/afd-orders-print.php';
+            if ($order_id) {
+                $type = $_GET['type'] ?? 'customer';
+                if ($type === 'kitchen') {
+                    require plugin_dir_path(__FILE__) . 'orders/afd-orders-print-kitchen.php';
+                } else {
+                    require plugin_dir_path(__FILE__) . 'orders/afd-orders-print-customer.php';
+                }
             }
             break;
 
