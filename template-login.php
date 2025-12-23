@@ -62,8 +62,8 @@ if(isset($_POST['fd_login_submit'])){
                             <div class="text-center w-100">
                                 <i class="fas fa-utensils mb-4" style="font-size: 60px; opacity: 0.8;"></i>
                             </div>
-                            <h3>Welcome Back!</h3>
-                            <p>Log in to access your saved addresses, track live orders, and enjoy your favorite meals.</p>
+                            <h3 class="text-white">Welcome Back!</h3>
+                            <p class="text-white">Log in to access your saved addresses, track live orders, and enjoy your favorite meals.</p>
                             <ul class="mt-4 list-unstyled">
                                 <li class="mb-2"><i class="fas fa-history me-2"></i> View Order History</li>
                                 <li class="mb-2"><i class="fas fa-heart me-2"></i> Fast Checkout</li>

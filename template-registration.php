@@ -79,8 +79,8 @@ get_header(); ?>
                 <div class="reg-card">
                     <div class="row g-0">
                         <div class="col-md-4 reg-info-side d-none d-md-flex">
-                            <h3>Welcome!</h3>
-                            <p>Create an account to track your delicious orders and get faster delivery.</p>
+                            <h3 class="text-white">Welcome!</h3>
+                            <p class="text-white">Create an account to track your delicious orders and get faster delivery.</p>
                             <ul class="mt-4 list-unstyled">
                                 <li class="mb-2"><i class="fas fa-check-circle me-2"></i> Save Multiple Addresses</li>
                                 <li class="mb-2"><i class="fas fa-check-circle me-2"></i> One-click Ordering</li>
