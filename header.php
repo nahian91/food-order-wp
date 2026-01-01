@@ -48,11 +48,12 @@
     if (function_exists('get_afd_restaurant_status')) {
         $store_status = get_afd_restaurant_status(); 
 
-        if (!$store_status['is_open']) : 
-            // Local check for Off Day display
-            $work_days    = get_option('afd_work_days', []);
+        // Show modal if the store is strictly CLOSED
+        if ($store_status['status'] === 'closed') : 
+            $schedule     = get_option('afd_schedule', []);
             $current_day  = current_datetime()->format('D');
-            $is_off_day   = !in_array($current_day, $work_days);
+            $day_settings = isset($schedule[$current_day]) ? $schedule[$current_day] : null;
+            $is_off_day   = (!$day_settings || empty($day_settings['enabled']));
             ?>
             <div id="afd-closed-modal" class="afd-modal-overlay">
                 <div class="afd-modal-box">
@@ -68,7 +69,7 @@
                                 <p class="off-day-text">Today is our Day Off</p>
                             <?php else : ?>
                                 <span>Today's Operating Hours</span>
-                                <p><?php echo esc_html(get_option('afd_open_time', '09:00')); ?> — <?php echo esc_html(get_option('afd_close_time', '22:00')); ?></p>
+                                <p><?php echo esc_html($day_settings['open']); ?> — <?php echo esc_html($day_settings['close']); ?></p>
                             <?php endif; ?>
                         </div>
                     </div>
@@ -95,24 +96,23 @@
                 </div>
                 <div class="col-lg-5 text-end">
                     <div class="social">
-    <?php 
-    $header_socials = get_field('header_socials', 'option');
-    
-    if ( $header_socials ) : ?>
-        <ul>
-            <?php foreach ( $header_socials as $social ) : 
-                $icon_data = $social['header_social_icon'];
-                $url = $social['header_social_icon_url'];
-                ?>
-                <li>
-                    <a href="<?php echo esc_url($url); ?>" target="_blank">
-                        <span class="dashicons <?php echo esc_attr($icon_data['value']); ?>"></span>
-                    </a>
-                </li>
-            <?php endforeach; ?>
-        </ul>
-    <?php endif; ?>
-</div>
+                        <?php 
+                        $header_socials = get_field('header_socials', 'option');
+                        if ( $header_socials ) : ?>
+                            <ul>
+                                <?php foreach ( $header_socials as $social ) : 
+                                    $icon_data = $social['header_social_icon'];
+                                    $url = $social['header_social_icon_url'];
+                                    ?>
+                                    <li>
+                                        <a href="<?php echo esc_url($url); ?>" target="_blank">
+                                            <span class="dashicons <?php echo esc_attr($icon_data['value']); ?>"></span>
+                                        </a>
+                                    </li>
+                                <?php endforeach; ?>
+                            </ul>
+                        <?php endif; ?>
+                    </div>
                 </div>
             </div>
         </div>

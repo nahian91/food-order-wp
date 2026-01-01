@@ -22,54 +22,74 @@ if (isset($_POST['fd_place_order'])) {
 
     $user_id = get_current_user_id() ?: 0;
     
-    $order_id = wp_insert_post([
-        'post_type'   => 'food_order',
-        'post_title'  => 'Order #' . time() . ' - ' . sanitize_text_field($data['fullName']),
-        'post_status' => 'publish',
-        'post_author' => $user_id
-    ]);
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'afd_food_orders';
 
-    if ($order_id) {
-        // Meta Data Storage
-        update_post_meta($order_id, 'customer_id', $user_id);
-        update_post_meta($order_id, 'order_type', sanitize_text_field($data['orderType']));
-        update_post_meta($order_id, 'customer_name', sanitize_text_field($data['fullName']));
-        update_post_meta($order_id, 'customer_email', sanitize_email($data['email']));
-        update_post_meta($order_id, 'customer_phone', sanitize_text_field($data['phone']));
-        update_post_meta($order_id, 'customer_address', sanitize_textarea_field($data['address']));
-        update_post_meta($order_id, 'order_notes', sanitize_textarea_field($data['notes']));
-        update_post_meta($order_id, 'order_items', $data['cart']); 
-        update_post_meta($order_id, 'subtotal', floatval($data['subtotal']));
-        update_post_meta($order_id, 'delivery_fee', floatval($data['delivery']));
-        update_post_meta($order_id, 'total_price', floatval($data['total']));
-        update_post_meta($order_id, 'order_status', 'pending');
+    // --- STEP A: GENERATE PERMANENT SEQUENTIAL ID ---
+    $today_date = current_time('Y-m-d');
+    $date_prefix = current_time('Ymd');
+    
+    // Count how many orders were placed today to find the next number
+    $count_today = $wpdb->get_var($wpdb->prepare(
+        "SELECT COUNT(id) FROM $table_name WHERE DATE(order_date) = %s",
+        $today_date
+    ));
+    
+    $new_sequence = intval($count_today) + 1;
+    $permanent_id = $date_prefix . '-' . str_pad($new_sequence, 4, '0', STR_PAD_LEFT);
 
-        // SYNC: Update User Profile meta so it auto-fills next time
+    // --- STEP B: DATABASE INSERTION ---
+    $inserted = $wpdb->insert(
+        $table_name,
+        [
+            'display_id'    => $permanent_id, // Saved permanently
+            'customer_id'   => $user_id,
+            'order_type'    => sanitize_text_field($data['orderType']),
+            'full_name'     => sanitize_text_field($data['fullName']),
+            'email'         => sanitize_email($data['email']),
+            'phone'         => sanitize_text_field($data['phone']),
+            'address'       => sanitize_textarea_field($data['address']),
+            'notes'         => sanitize_textarea_field($data['notes']),
+            'items_json'    => json_encode($data['cart']), 
+            'subtotal'      => floatval($data['subtotal']),
+            'delivery_fee'  => floatval($data['delivery']),
+            'total_price'   => floatval($data['total']),
+            'order_status'  => 'pending',
+            'order_date'    => current_time('mysql')
+        ],
+        ['%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%f', '%f', '%f', '%s', '%s']
+    );
+
+    if ($inserted) {
+        // Update user meta for convenience in future orders
         if ($user_id > 0) {
             update_user_meta($user_id, 'phone', sanitize_text_field($data['phone']));
-            // Only update address if it's a delivery order
             if ($data['orderType'] === 'delivery') {
                 update_user_meta($user_id, 'address', sanitize_textarea_field($data['address']));
             }
         }
-
-        echo json_encode(['status' => 'success']);
+        
+        // Return success and the ID to the frontend
+        echo json_encode([
+            'status' => 'success', 
+            'order_id' => $permanent_id // Pass the permanent ID for the redirect
+        ]);
     } else {
-        echo json_encode(['status' => 'error', 'message' => 'Database error.']);
+        echo json_encode(['status' => 'error', 'message' => 'DB Error: ' . $wpdb->last_error]);
     }
     exit;
 }
 
 get_header();
 
-// PRE-FILL LOGIC: Fetch profile data
+// PRE-FILL LOGIC
 $u = wp_get_current_user();
 $user_id = $u->ID;
 $user_phone = get_user_meta($user_id, 'phone', true);
 $user_address = get_user_meta($user_id, 'address', true);
 
 $currency = '£';
-$base_delivery_fee = 3.50;
+$base_delivery_fee = get_option('afd_delivery_charge', '0.00');
 ?>
 
 <style>
@@ -98,7 +118,7 @@ $base_delivery_fee = 3.50;
         <div class="row">
             <div class="col-lg-7">
                 <div class="checkout-card">
-                    <h4 class="fw-bold mb-4">How should we get it to you?</h4>
+                    <h4 class="fw-bold mb-4">Fulfillment Method</h4>
                     <div class="fulfillment-toggle">
                         <input type="radio" name="orderType" id="typeDelivery" value="delivery" checked>
                         <label for="typeDelivery">🚚 Delivery</label>
@@ -110,33 +130,31 @@ $base_delivery_fee = 3.50;
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Full Name</label>
-                            <input type="text" id="fullName" class="form-control" value="<?php echo esc_attr($u->display_name); ?>" placeholder="John Doe">
+                            <input type="text" id="fullName" class="form-control" value="<?php echo esc_attr($u->display_name); ?>" required>
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Email Address</label>
-                            <input type="email" id="email" class="form-control" value="<?php echo esc_attr($u->user_email); ?>" placeholder="john@example.com">
+                            <input type="email" id="email" class="form-control" value="<?php echo esc_attr($u->user_email); ?>" required>
                         </div>
                         <div class="col-md-12 mb-3">
                             <label class="form-label">Phone Number</label>
-                            <input type="tel" id="phone" class="form-control" value="<?php echo esc_attr($user_phone); ?>" placeholder="07123 456789">
+                            <input type="tel" id="phone" class="form-control" value="<?php echo esc_attr($user_phone); ?>" required>
                         </div>
-                        
                         <div class="col-md-12 mb-3" id="addressArea">
                             <label class="form-label">Delivery Address</label>
-                            <textarea id="address" class="form-control" rows="3" placeholder="Street, City, Postcode"><?php echo esc_textarea($user_address); ?></textarea>
+                            <textarea id="address" class="form-control" rows="3"><?php echo esc_textarea($user_address); ?></textarea>
                         </div>
-
                         <div class="col-md-12">
                             <label class="form-label">Special Notes (Optional)</label>
-                            <textarea id="notes" class="form-control" rows="2" placeholder="Gate codes, allergies, etc."></textarea>
+                            <textarea id="notes" class="form-control" rows="2" placeholder="e.g. Extra spicy, gate code..."></textarea>
                         </div>
                     </div>
                 </div>
             </div>
 
             <div class="col-lg-5">
-                <div class="checkout-card sticky-top sticky-column" style="top: 20px;">
-                    <h4 class="fw-bold mb-4">Your Order Summary</h4>
+                <div class="checkout-card sticky-top" style="top: 100px;">
+                    <h4 class="fw-bold mb-4">Order Summary</h4>
                     <div id="itemsContainer" class="mb-4"></div>
 
                     <div class="border-top pt-3">
@@ -146,7 +164,7 @@ $base_delivery_fee = 3.50;
                         </div>
                         <div class="summary-item" id="deliveryRow">
                             <span>Delivery Fee</span>
-                            <span class="fw-bold"><?php echo $currency; ?><span id="deliveryVal"><?php echo number_format($base_delivery_fee, 2); ?></span></span>
+                            <span class="fw-bold"><?php echo $currency; ?><span id="deliveryVal"><?php echo number_format(floatval($base_delivery_fee), 2); ?></span></span>
                         </div>
                         <div class="summary-item mt-3 pt-3 border-top" style="font-size: 1.4rem;">
                             <strong>Total</strong>
@@ -165,7 +183,7 @@ $base_delivery_fee = 3.50;
 <script>
 document.addEventListener('DOMContentLoaded', function(){
     let cart = JSON.parse(localStorage.getItem('fd_cart_save')) || [];
-    const deliveryFee = <?php echo $base_delivery_fee; ?>;
+    const deliveryFee = parseFloat("<?php echo $base_delivery_fee; ?>") || 0;
     const currency = "<?php echo $currency; ?>";
 
     function updateUI() {
@@ -185,11 +203,11 @@ document.addEventListener('DOMContentLoaded', function(){
 
         let subtotal = 0;
         container.innerHTML = cart.map(item => {
-            let total = item.price * item.qty;
-            subtotal += total;
+            let itemTotal = item.price * item.qty;
+            subtotal += itemTotal;
             return `<div class="d-flex justify-content-between mb-2">
                         <span><span class="fw-bold">${item.qty}x</span> ${item.name}</span>
-                        <span>${currency}${total.toFixed(2)}</span>
+                        <span>${currency}${itemTotal.toFixed(2)}</span>
                     </div>`;
         }).join('');
 
@@ -223,7 +241,7 @@ document.addEventListener('DOMContentLoaded', function(){
         };
 
         if(!data.fullName || !data.phone || (orderType === 'delivery' && !data.address)) {
-            alert('Please fill in all required fields.');
+            alert('Please fill in all required contact fields.');
             return;
         }
 
@@ -239,7 +257,8 @@ document.addEventListener('DOMContentLoaded', function(){
         .then(res => {
             if(res.status === 'success') {
                 localStorage.removeItem('fd_cart_save');
-                window.location.href = '<?php echo home_url('/thanks'); ?>';
+                // Redirect to thanks page with the permanent ID in the URL
+                window.location.href = '<?php echo home_url('/thanks/?order_id='); ?>' + res.order_id;
             } else {
                 alert(res.message);
                 btn.disabled = false;
@@ -249,6 +268,7 @@ document.addEventListener('DOMContentLoaded', function(){
         .catch(() => {
             alert('Error connecting to server.');
             btn.disabled = false;
+            btn.innerText = "CONFIRM ORDER";
         });
     });
 

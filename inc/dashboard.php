@@ -1,26 +1,31 @@
 <?php
 if (!defined('ABSPATH')) exit;
 
+/**
+ * Dashboard Tab - SaaS UI with 5-Second Auto-Alarm
+ * Database: afd_food_orders
+ */
 function fd_dashboard_tab() {
-    // --- 1. DATA CALCULATIONS ---
-    
-    // TODAY'S DATA ONLY (For Revenue & Product Stats)
-    $today_args = [
-        'post_type'   => 'food_order',
-        'post_status' => 'publish',
-        'numberposts' => -1,
-        'date_query'  => [['year' => date('Y'), 'month' => date('m'), 'day' => date('d')]],
-    ];
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'afd_food_orders';
 
-    $todays_orders   = get_posts($today_args);
-    $todays_count    = count($todays_orders);
-    $todays_revenue  = 0;
-    $product_stats   = [];
-    $category_stats  = [];
+    // --- 1. DATA CALCULATIONS (Custom Table) ---
+    $today_date = date('Y-m-d');
+    
+    // Get today's orders
+    $todays_orders = $wpdb->get_results($wpdb->prepare(
+        "SELECT * FROM $table_name WHERE DATE(order_date) = %s", 
+        $today_date
+    ));
+
+    $todays_count   = count($todays_orders);
+    $todays_revenue = 0;
+    $product_stats  = [];
+    $category_stats = [];
 
     foreach($todays_orders as $o) {
-        $todays_revenue += (float)get_post_meta($o->ID, 'total_price', true);
-        $items = get_post_meta($o->ID, 'items', true);
+        $todays_revenue += (float)$o->total_price;
+        $items = json_decode($o->items_json, true);
         
         if (is_array($items)) {
             foreach ($items as $item) {
@@ -28,7 +33,7 @@ function fd_dashboard_tab() {
                 $qty  = intval($item['qty']);
                 $product_stats[$name] = ($product_stats[$name] ?? 0) + $qty;
                 
-                // Get Category Logic
+                // Fetch category from food_item post type if it exists
                 $product_obj = get_page_by_title($name, OBJECT, 'food_item');
                 if ($product_obj) {
                     $terms = wp_get_post_terms($product_obj->ID, 'food_category');
@@ -43,159 +48,202 @@ function fd_dashboard_tab() {
     arsort($product_stats);
     arsort($category_stats);
 
-    // LIVE PENDING COUNT (Matches your Order List logic exactly)
-    $all_orders = get_posts([
-        'post_type'   => 'food_order',
-        'post_status' => 'publish',
-        'numberposts' => -1,
-    ]);
-
-    $pending_orders_count = 0;
-    foreach ($all_orders as $o) {
-        $status = get_post_meta($o->ID, 'status', true) ?: 'pending';
-        if (strtolower($status) === 'pending') {
-            $pending_orders_count++;
-        }
-    }
+    // Count pending orders for the Alarm trigger
+    $pending_orders_count = $wpdb->get_var("SELECT COUNT(*) FROM $table_name WHERE order_status = 'pending'");
 
     $all_orders_url = admin_url('admin.php?page=awesome_food_delivery&tab=orders');
     ?>
 
+    <meta http-equiv="refresh" content="30">
+
     <style>
         :root {
-            --panel-bg: #f8fafc;
-            --panel-card: #ffffff;
-            --panel-accent: #6366f1;
-            --panel-text: #0f172a;
-            --panel-muted: #64748b;
-            --panel-border: #e2e8f0;
+            --afd-bg: #f8fafc;
+            --afd-card: #ffffff;
+            --afd-accent: #6366f1;
+            --afd-text: #0f172a;
+            --afd-muted: #64748b;
+            --afd-border: #e2e8f0;
+            --afd-success: #22c55e;
+            --afd-danger: #ef4444;
         }
 
-        .fd-admin-summary { padding: 30px; background: var(--panel-bg); font-family: 'Inter', -apple-system, sans-serif; color: var(--panel-text); }
-
-        /* Header */
-        .fd-summary-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 40px; }
-        .fd-summary-header h1 { font-size: 32px; font-weight: 800; margin: 0; letter-spacing: -1px; }
-
-        /* Status Banner (Live Pending Count) */
-        .fd-status-banner {
-            padding: 20px 25px; border-radius: 20px; margin-bottom: 35px; display: flex; align-items: center; justify-content: space-between;
-            background: #fff; border: 1px solid var(--panel-border); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.03);
-        }
-        .fd-status-info { display: flex; align-items: center; gap: 20px; }
+        .afd-admin-summary { padding: 30px; background: var(--afd-bg); font-family: 'Inter', -apple-system, sans-serif; color: var(--afd-text); }
         
-        .fd-live-indicator {
+        /* Header Area */
+        .afd-summary-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 40px; }
+        .afd-summary-header h1 { font-size: 32px; font-weight: 800; margin: 0; letter-spacing: -1px; }
+        
+        .afd-datetime-container {
+            display: flex; align-items: center; background: #ffffff; padding: 10px 18px;
+            border-radius: 14px; border: 1px solid var(--afd-border); box-shadow: 0 2px 4px rgba(0,0,0,0.02); gap: 15px;
+        }
+        .afd-date-part { display: flex; align-items: center; gap: 8px; font-weight: 600; color: var(--afd-muted); font-size: 13px; }
+        .afd-time-part { 
+            display: flex; align-items: center; gap: 8px; padding-left: 15px; border-left: 2px solid #f1f5f9; 
+            color: var(--afd-accent); font-weight: 800; font-size: 16px; font-family: 'Courier New', monospace; 
+        }
+        .afd-clock-dot { width: 6px; height: 6px; background: var(--afd-success); border-radius: 50%; animation: afd-blink 1s infinite; }
+        @keyframes afd-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+        /* Pending Alert Banner */
+        .afd-status-banner {
+            padding: 20px 25px; border-radius: 20px; margin-bottom: 35px; display: flex; align-items: center; justify-content: space-between;
+            background: #fff; border: 1px solid var(--afd-border); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.03);
+        }
+        .afd-status-info { display: flex; align-items: center; gap: 20px; }
+        .afd-live-indicator {
             position: relative; width: 48px; height: 48px; border-radius: 14px; display: flex; align-items: center; justify-content: center;
             background: <?php echo ($pending_orders_count > 0) ? '#fff1f2' : '#f0fdf4'; ?>;
             color: <?php echo ($pending_orders_count > 0) ? '#ef4444' : '#22c55e'; ?>;
         }
 
-        /* Pulse Animation if orders are pending */
         <?php if ($pending_orders_count > 0) : ?>
-        .fd-pulse {
+        .afd-pulse {
             position: absolute; top: -2px; right: -2px; width: 12px; height: 12px; 
-            background: #ef4444; border-radius: 50%; border: 2px solid #fff;
-            animation: fd-pulse-red 2s infinite;
+            background: var(--afd-danger); border-radius: 50%; border: 2px solid #fff;
+            animation: afd-pulse-red 2s infinite;
         }
         <?php endif; ?>
 
-        @keyframes fd-pulse-red {
+        @keyframes afd-pulse-red {
             0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
             70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
             100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
         }
 
-        .fd-view-btn {
-            background: var(--panel-accent); color: #fff !important; text-decoration: none;
+        .afd-view-btn {
+            background: var(--afd-accent); color: #fff !important; text-decoration: none;
             padding: 10px 20px; border-radius: 12px; font-weight: 700; font-size: 13px;
             display: flex; align-items: center; gap: 8px; transition: 0.2s;
         }
-        .fd-view-btn:hover { opacity: 0.9; transform: translateY(-1px); }
 
-        /* Stat Grid */
-        .fd-stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 25px; margin-bottom: 40px; }
-        .fd-stat-card { background: var(--panel-card); padding: 25px; border-radius: 20px; border: 1px solid var(--panel-border); }
-        .fd-stat-label { display: flex; align-items: center; gap: 8px; color: var(--panel-muted); font-size: 13px; font-weight: 700; text-transform: uppercase; margin-bottom: 15px; }
-        .fd-stat-value { font-size: 28px; font-weight: 800; color: var(--panel-text); }
+        /* Stats Grid */
+        .afd-stat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 25px; margin-bottom: 40px; }
+        .afd-stat-card { background: var(--afd-card); padding: 25px; border-radius: 20px; border: 1px solid var(--afd-border); }
+        .afd-stat-label { display: flex; align-items: center; gap: 8px; color: var(--afd-muted); font-size: 13px; font-weight: 700; text-transform: uppercase; margin-bottom: 15px; }
+        .afd-stat-value { font-size: 28px; font-weight: 800; color: var(--afd-text); }
 
-        /* Bottom Split View (Lists) */
-        .fd-split-view { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; }
-        .fd-content-box { background: var(--panel-card); border-radius: 20px; padding: 30px; border: 1px solid var(--panel-border); }
-        .fd-content-box h3 { margin-top: 0; font-size: 18px; font-weight: 700; border-bottom: 1px solid var(--panel-border); padding-bottom: 15px; margin-bottom: 20px; }
-        .fd-list-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #f1f5f9; }
-        .fd-qty-pill { background: #eef2ff; color: var(--panel-accent); font-weight: 700; padding: 4px 10px; border-radius: 10px; font-size: 12px; }
+        /* Lists */
+        .afd-split-view { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; }
+        .afd-content-box { background: var(--afd-card); border-radius: 20px; padding: 30px; border: 1px solid var(--afd-border); }
+        .afd-content-box h3 { margin-top: 0; font-size: 18px; font-weight: 700; border-bottom: 1px solid var(--afd-border); padding-bottom: 15px; margin-bottom: 20px; }
+        .afd-list-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #f1f5f9; }
+        .afd-qty-pill { background: #eef2ff; color: var(--afd-accent); font-weight: 700; padding: 4px 10px; border-radius: 10px; font-size: 12px; }
     </style>
 
-    <div class="fd-admin-summary">
-        
-        <div class="fd-summary-header">
+    <div class="afd-admin-summary">
+        <audio id="afdOrderAlarm" preload="auto">
+            <source src="https://assets.mixkit.co/active_storage/sfx/2041/2041-preview.mp3" type="audio/mpeg">
+        </audio>
+
+        <div class="afd-summary-header">
             <div>
                 <h1>Daily Dashboard</h1>
-                <p>Real-time restaurant performance tracking.</p>
+                <p>Live performance tracking from order database.</p>
             </div>
-            <div style="font-size: 14px; font-weight: 700; background: white; padding: 10px 20px; border-radius: 10px; border: 1px solid var(--panel-border);">
-                <?php echo date('l, jS F Y'); ?>
+            <div class="afd-datetime-container">
+                <div class="afd-date-part"><span class="dashicons dashicons-calendar-alt"></span> <?php echo date('l, jS F Y'); ?></div>
+                <div class="afd-time-part">
+                    <span class="dashicons dashicons-clock"></span>
+                    <span id="afdLiveClock">00:00:00</span>
+                    <span class="afd-clock-dot"></span>
+                </div>
             </div>
         </div>
 
-        <div class="fd-status-banner">
-            <div class="fd-status-info">
-                <div class="fd-live-indicator">
+        <div class="afd-status-banner">
+            <div class="afd-status-info">
+                <div class="afd-live-indicator">
                     <span class="dashicons dashicons-bell"></span>
-                    <?php if ($pending_orders_count > 0) : ?><span class="fd-pulse"></span><?php endif; ?>
+                    <?php if ($pending_orders_count > 0) : ?><span class="afd-pulse"></span><?php endif; ?>
                 </div>
                 <div>
                     <h2 style="margin:0; font-size:18px; font-weight:800;"><?php echo $pending_orders_count; ?> Pending Orders</h2>
-                    <p style="margin:2px 0 0; color:var(--panel-muted);">Total orders currently awaiting action in the kitchen.</p>
+                    <p style="margin:2px 0 0; color:var(--afd-muted);">Checking every 30s. Alarm will sound for 5s on new orders.</p>
                 </div>
             </div>
-            <a href="<?php echo esc_url($all_orders_url); ?>" class="fd-view-btn">
-                Manage All Orders <span class="dashicons dashicons-arrow-right-alt2"></span>
+            
+            <a href="<?php echo esc_url($all_orders_url); ?>" class="afd-view-btn">
+                Manage Orders <span class="dashicons dashicons-arrow-right-alt2"></span>
             </a>
         </div>
 
-        <div class="fd-stat-grid">
-            <div class="fd-stat-card">
-                <div class="fd-stat-label"><span class="dashicons dashicons-cart"></span> Today's Orders</div>
-                <div class="fd-stat-value"><?php echo $todays_count; ?></div>
+        <div class="afd-stat-grid">
+            <div class="afd-stat-card">
+                <div class="afd-stat-label"><span class="dashicons dashicons-cart"></span> Today's Orders</div>
+                <div class="afd-stat-value"><?php echo $todays_count; ?></div>
             </div>
-            <div class="fd-stat-card">
-                <div class="fd-stat-label"><span class="dashicons dashicons-chart-area"></span> Today's Revenue</div>
-                <div class="fd-stat-value">£<?php echo number_format($todays_revenue, 2); ?></div>
-            </div>
-            <div class="fd-stat-card">
-                <div class="fd-stat-label"><span class="dashicons dashicons-clock"></span> Current Time</div>
-                <div class="fd-stat-value"><?php echo date('H:i'); ?></div>
+            <div class="afd-stat-card">
+                <div class="afd-stat-label"><span class="dashicons dashicons-chart-area"></span> Today's Revenue</div>
+                <div class="afd-stat-value">£<?php echo number_format($todays_revenue, 2); ?></div>
             </div>
         </div>
 
-        <div class="fd-split-view">
-            <div class="fd-content-box">
-                <h3>Top Selling Products (Today)</h3>
+        <div class="afd-split-view">
+            <div class="afd-content-box">
+                <h3>Top Selling (Today)</h3>
                 <?php if (!empty($product_stats)) : 
                     foreach (array_slice($product_stats, 0, 5) as $name => $qty) : ?>
-                    <div class="fd-list-row">
+                    <div class="afd-list-row">
                         <span style="font-weight:600;"><?php echo esc_html($name); ?></span>
-                        <span class="fd-qty-pill"><?php echo $qty; ?> Sold</span>
+                        <span class="afd-qty-pill"><?php echo $qty; ?> Sold</span>
                     </div>
                 <?php endforeach; else : ?>
-                    <p style="color:var(--panel-muted);">No sales data for today yet.</p>
+                    <p style="color:var(--afd-muted);">No items sold today.</p>
                 <?php endif; ?>
             </div>
 
-            <div class="fd-content-box">
-                <h3>Popular Categories</h3>
+            <div class="afd-content-box">
+                <h3>Categories</h3>
                 <?php if (!empty($category_stats)) : 
                     foreach (array_slice($category_stats, 0, 5) as $cat => $qty) : ?>
-                    <div class="fd-list-row">
+                    <div class="afd-list-row">
                         <span style="font-weight:600;"><?php echo esc_html($cat); ?></span>
-                        <span class="fd-qty-pill"><?php echo $qty; ?> Items</span>
+                        <span class="afd-qty-pill"><?php echo $qty; ?> Items</span>
                     </div>
                 <?php endforeach; else : ?>
-                    <p style="color:var(--panel-muted);">No category data available.</p>
+                    <p style="color:var(--afd-muted);">No category data.</p>
                 <?php endif; ?>
             </div>
         </div>
     </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // --- 1. LIVE CLOCK ---
+        function updateAfdClock() {
+            const now = new Date();
+            const timeString = now.getHours().toString().padStart(2, '0') + ':' + 
+                               now.getMinutes().toString().padStart(2, '0') + ':' + 
+                               now.getSeconds().toString().padStart(2, '0');
+            const el = document.getElementById('afdLiveClock');
+            if (el) el.textContent = timeString;
+        }
+        setInterval(updateAfdClock, 1000);
+        updateAfdClock();
+
+        // --- 2. AUTO-ALARM (5 SECONDS) ---
+        const pendingCount = <?php echo intval($pending_orders_count); ?>;
+        const audio = document.getElementById('afdOrderAlarm');
+
+        // Note: Browsers block auto-play until the first user click on the page.
+        if (pendingCount > 0 && audio) {
+            let playPromise = audio.play();
+
+            if (playPromise !== undefined) {
+                playPromise.then(_ => {
+                    // Start Timer to stop after 5 seconds
+                    setTimeout(() => {
+                        audio.pause();
+                        audio.currentTime = 0; 
+                    }, 5000);
+                }).catch(error => {
+                    console.log("Audio playback waiting for user interaction.");
+                });
+            }
+        }
+    });
+    </script>
     <?php
 }

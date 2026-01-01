@@ -1,29 +1,42 @@
 <?php
 /**
- * Final View Order - Unified Admin UI
+ * Final View Order - Unified Admin UI (Permanent ID Version)
  */
 if (!defined('ABSPATH')) exit;
 
+global $wpdb;
+$table_name = $wpdb->prefix . 'afd_food_orders';
+$order_id   = intval($_GET['order_id']);
+
 // 1. DATA FETCHING
-$order_id = intval($_GET['order_id']);
+$order = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $order_id));
 
-// Metadata
-$afon_customer_name    = get_post_meta($order_id, 'customer_name', true);
-$afon_customer_phone   = get_post_meta($order_id, 'customer_phone', true);
-$afon_customer_address = get_post_meta($order_id, 'customer_address', true);
-$afon_notes            = get_post_meta($order_id, 'notes', true);
-$afon_status           = strtolower(get_post_meta($order_id, 'status', true) ?: 'pending');
-$afon_total            = get_post_meta($order_id, 'total_price', true);
-$afon_items            = get_post_meta($order_id, 'order_items', true);
+if (!$order) {
+    echo '<div class="notice notice-error"><p>Order not found in the database.</p></div>';
+    return;
+}
 
-// Custom ID Format (Sync with Table)
-$display_id = get_the_title($order_id);
+/**
+ * 2. PERMANENT ID LOGIC
+ * We now pull the display_id directly from the column.
+ * Fallback to 'REC-' . ID if the column happens to be empty (for very old orders).
+ */
+$display_id = !empty($order->display_id) ? $order->display_id : 'REC-' . $order->id;
+
+// Map columns for the template
+$afon_customer_name    = $order->full_name;
+$afon_customer_phone   = $order->phone;
+$afon_customer_address = $order->address;
+$afon_notes            = $order->notes;
+$afon_status           = strtolower($order->order_status ?: 'pending');
+$afon_total            = $order->total_price;
+$afon_items            = json_decode($order->items_json, true);
 
 // Action URLs
-$edit_url   = admin_url('admin.php?page=awesome_food_delivery&tab=orders&order_id=' . $order_id . '&action=edit');
-$print_url  = admin_url('admin.php?page=awesome_food_delivery&tab=orders&order_id=' . $order_id . '&action=print&type=customer');
+$edit_url    = admin_url('admin.php?page=awesome_food_delivery&tab=orders&order_id=' . $order_id . '&action=edit');
+$print_url   = admin_url('admin.php?page=awesome_food_delivery&tab=orders&order_id=' . $order_id . '&action=print&type=customer');
 $kitchen_url = admin_url('admin.php?page=awesome_food_delivery&tab=orders&order_id=' . $order_id . '&action=print&type=kitchen');
-$delete_url = wp_nonce_url(
+$delete_url  = wp_nonce_url(
     admin_url('admin.php?page=awesome_food_delivery&tab=orders&order_id=' . $order_id . '&action=delete'),
     'delete_order_' . $order_id
 );
@@ -31,7 +44,6 @@ $delete_url = wp_nonce_url(
 
 <style>
     :root { --res-red: #d63638; --res-dark: #1d2327; --res-border: #ccd0d4; --res-bg: #f0f2f5; }
-    
     .view-order-wrap { margin: 20px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     
     /* Header & Quick Actions */
@@ -61,6 +73,7 @@ $delete_url = wp_nonce_url(
     .v-status { padding: 6px 15px; border-radius: 30px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
     .v-status-pending { background: #fff8e5; color: #856404; border: 1px solid #ffeeba; }
     .v-status-completed { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+    .v-status-cancelled { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
 
     /* Sidebar Utils */
     .info-block { margin-bottom: 20px; }
@@ -81,9 +94,9 @@ $delete_url = wp_nonce_url(
         <div>
             <div class="id-badge-large">
                 <span style="color:#646970; font-size:12px; font-weight:700;">ORDER ID:</span>
-                <span style="font-weight:800; color:var(--res-red); font-size:18px; margin-left:5px;"><?php echo esc_html($display_id); ?></span>
+                <span style="font-weight:800; color:var(--res-red); font-size:18px; margin-left:5px;">#<?php echo esc_html($display_id); ?></span>
             </div>
-            <p style="margin:10px 0 0; color:#646970;"><span class="dashicons dashicons-calendar-alt" style="font-size:16px;"></span> Ordered on <?php echo get_the_date('F j, Y \a\t g:i a', $order_id); ?></p>
+            <p style="margin:10px 0 0; color:#646970;"><span class="dashicons dashicons-calendar-alt" style="font-size:16px;"></span> Ordered on <?php echo date('F j, Y \a\t g:i a', strtotime($order->order_date)); ?></p>
         </div>
         
         <div class="action-group">
@@ -99,7 +112,7 @@ $delete_url = wp_nonce_url(
             
             <div class="view-card">
                 <div class="view-card-header">
-                    <h2>Order Summary</h2>
+                    <h2>Order Summary (<?php echo ucfirst($order->order_type); ?>)</h2>
                     <span class="v-status v-status-<?php echo $afon_status; ?>"><?php echo ucfirst($afon_status); ?></span>
                 </div>
                 <div class="view-card-body" style="padding:0;">
@@ -133,6 +146,8 @@ $delete_url = wp_nonce_url(
                     </table>
                 </div>
                 <div class="totals-area">
+                    <div style="margin-bottom: 5px;"><span class="total-label" style="font-size: 12px;">SUBTOTAL: £<?php echo number_format(floatval($order->subtotal), 2); ?></span></div>
+                    <div style="margin-bottom: 10px;"><span class="total-label" style="font-size: 12px;">DELIVERY: £<?php echo number_format(floatval($order->delivery_fee), 2); ?></span></div>
                     <span class="total-label">ORDER TOTAL</span>
                     <span class="total-amount">£<?php echo number_format(floatval($afon_total), 2); ?></span>
                 </div>
@@ -165,6 +180,10 @@ $delete_url = wp_nonce_url(
                         <label>Phone Number</label>
                         <p style="color:var(--res-red);"><?php echo esc_html($afon_customer_phone ?: 'Not Provided'); ?></p>
                     </div>
+                    <div class="info-block">
+                        <label>Email Address</label>
+                        <p><?php echo esc_html($order->email ?: 'N/A'); ?></p>
+                    </div>
                     <hr style="border:0; border-top:1px solid #f0f0f1; margin:20px 0;">
                     <div class="info-block">
                         <label>Delivery Address</label>
@@ -182,7 +201,7 @@ $delete_url = wp_nonce_url(
                     <a href="<?php echo $delete_url; ?>" 
                        class="btn-v" 
                        style="color:#d63638; border-color:#f5c2c7; width:100%; justify-content:center;"
-                       onclick="return confirm('Permanently delete <?php echo $display_id; ?>?')">
+                       onclick="return confirm('Permanently delete #<?php echo $display_id; ?>?')">
                        <span class="dashicons dashicons-trash"></span> Delete Order Record
                     </a>
                 </div>

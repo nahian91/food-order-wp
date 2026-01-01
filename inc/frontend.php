@@ -1,6 +1,9 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
+/**
+ * SHORTCODE: Best Sellers / Featured Menu
+ */
 function food_best_sellers_shortcode() {
     ob_start();
 
@@ -67,7 +70,6 @@ function food_best_sellers_shortcode() {
                         <ul class="meal-items" style="padding: 0; margin: 0;">
                             <?php 
                             while ($products->have_posts()) : $products->the_post(); 
-                                // Using your exact meta key 'price'
                                 $price = get_post_meta(get_the_ID(), 'price', true); 
                             ?>
                                 <li style="list-style: none; display: flex; align-items: flex-start; margin-bottom: 25px;">
@@ -107,22 +109,18 @@ function food_best_sellers_shortcode() {
             ?>
         </div>
     </div>
-
-    <style>
-        .btn-all-menus { background: #d63638; color: #fff !important; padding: 12px 35px; border-radius: 5px; font-weight: 700; text-transform: uppercase; text-decoration: none; display: inline-block; transition: 0.3s; }
-        .btn-all-menus:hover { background: #111; }
-        .sub-heading { font-size: 20px; color: #1d2327; }
-    </style>
-
     <?php
     return ob_get_clean();
 }
 add_shortcode('best_sellers_menu', 'food_best_sellers_shortcode');
 
+
+/**
+ * SHORTCODE: Category Carousel
+ */
 function fd_dynamic_category_carousel_shortcode() {
     ob_start();
     
-    // Get terms from your specific taxonomy 'food_category'
     $terms = get_terms([
         'taxonomy'   => 'food_category',
         'hide_empty' => false,
@@ -138,7 +136,6 @@ function fd_dynamic_category_carousel_shortcode() {
                     <div class="site-heading text-center">
                         <h4 class="sub-title">Food Category</h4>
                         <h2 class="title split-text">Top category of our menus</h2>
-                        
                         <div class="mt-4">
                             <a href="<?php echo home_url('/menu'); ?>" class="btn-all-menus">VIEW ALL MENUS</a>
                         </div>
@@ -149,15 +146,11 @@ function fd_dynamic_category_carousel_shortcode() {
         <div class="container">
             <div class="row">
                 <div class="col-lg-12">
-                    <div class="food-cat-carousel text-light swiper">
+                    <div class="food-cat-carousel swiper">
                         <div class="swiper-wrapper">
-                            
                             <?php foreach ($terms as $term) : 
-                                // Get the image ID from your custom meta 'fd_category_image'
                                 $img_id = get_term_meta($term->term_id, 'fd_category_image', true);
                                 $img_url = $img_id ? wp_get_attachment_image_url($img_id, 'large') : get_template_directory_uri() . '/assets/img/category/1.jpg';
-                                
-                                // Link to specific category anchor on menu page
                                 $target_link = home_url('/menu/#cat-' . $term->slug);
                                 ?>
                                 <div class="swiper-slide">
@@ -169,7 +162,6 @@ function fd_dynamic_category_carousel_shortcode() {
                                     </div>
                                 </div>
                             <?php endforeach; ?>
-
                         </div>
                         <div class="swiper-pagination"></div>
                     </div>
@@ -177,24 +169,6 @@ function fd_dynamic_category_carousel_shortcode() {
             </div>
         </div>
     </div>
-
-    <style>
-        .btn-all-menus {
-            background: #d63638;
-            color: #fff !important;
-            padding: 10px 30px;
-            border-radius: 5px;
-            font-weight: 700;
-            text-transform: uppercase;
-            text-decoration: none;
-            display: inline-block;
-            transition: 0.3s;
-        }
-        .btn-all-menus:hover { background: #111; }
-        .food-cat-item a { display: block; height: 300px; background-size: cover; background-position: center; border-radius: 15px; position: relative; overflow: hidden; }
-        .food-cat-item a::before { content: ''; position: absolute; inset: 0; background: linear-gradient(to bottom, transparent, rgba(0,0,0,0.7)); }
-        .food-cat-item h4, .food-cat-item span { position: relative; z-index: 2; margin: 0; }
-    </style>
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
@@ -214,27 +188,29 @@ function fd_dynamic_category_carousel_shortcode() {
             }
         });
     </script>
-
     <?php
     return ob_get_clean();
 }
 add_shortcode('food_categories', 'fd_dynamic_category_carousel_shortcode');
 
-if (!defined('ABSPATH')) exit;
 
+/**
+ * SHORTCODE: Main Food Ordering System (Menu + Cart)
+ */
 function fd_food_items_shortcode() {
-    // Ensure Dashicons are loaded on the frontend
     wp_enqueue_style('dashicons');
 
-    // 1. RESTAURANT STATUS & SETTINGS
+    // 1. SETTINGS & DYNAMIC DATA
     $store_status = function_exists('get_afd_restaurant_status') ? get_afd_restaurant_status() : ['is_open' => true];
     $is_open      = $store_status['is_open'];
     $open_time    = get_option('afd_open_time', '09:00');
     $close_time   = get_option('afd_close_time', '22:00');
     $currency     = '£';
-    $delivery_fee = 3.50; 
+    
+    // UPDATED: Pulling delivery charge from settings
+    $saved_delivery_fee = get_option('afd_delivery_charge', '0.00');
 
-    // 2. FETCH AND GROUP DATA
+    // 2. FETCH DATA
     $items = get_posts([
         'post_type'      => 'food_item',
         'posts_per_page' => -1,
@@ -255,7 +231,6 @@ function fd_food_items_shortcode() {
         if (!isset($items_by_cat[$cat_slug])) {
             $img_id = get_term_meta($cat_id, 'fd_category_image', true);
             $image_url = $img_id ? wp_get_attachment_image_url($img_id, 'medium') : 'https://ui-avatars.com/api/?name=' . urlencode($cat_name) . '&background=fef2f2&color=d63638&bold=true';
-
             $items_by_cat[$cat_slug] = [
                 'name'  => $cat_name,
                 'img'   => $image_url,
@@ -272,29 +247,19 @@ function fd_food_items_shortcode() {
 
 <style>
     .fd-main-wrapper { max-width: 1200px; margin: 0 auto; padding: 40px 20px; font-family: 'Inter', sans-serif; background: #fcfcfc; }
-
-    /* --- SEARCH BAR --- */
     .fd-search-container { margin-bottom: 40px; position: relative; }
     .fd-menu-search { width: 100%; padding: 18px 25px 18px 55px; border-radius: 15px; border: 1px solid #ddd; font-size: 16px; box-shadow: 0 5px 15px rgba(0,0,0,0.05); outline: none; transition: 0.3s; }
     .fd-menu-search:focus { border-color: #d63638; box-shadow: 0 5px 20px rgba(214, 54, 56, 0.15); }
     .fd-search-icon { position: absolute; left: 20px; top: 50%; transform: translateY(-50%); color: #aaa; font-size: 20px; }
-
-    /* --- CATEGORY GRID --- */
-    .fd-category-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 5px; margin-bottom: 50px; }
+    .fd-category-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 15px; margin-bottom: 50px; }
     .fd-cat-grid-item { text-decoration: none !important; text-align: center; transition: 0.3s ease; display: block; }
     .fd-cat-grid-item:hover { transform: translateY(-5px); }
-    .fd-cat-grid-thumb { width: 50px; height: 50px; border-radius: 50%; background: #fff; margin: 0 auto 5px; overflow: hidden; border: 4px solid #fff; box-shadow: 0 10px 20px rgba(0,0,0,0.08); display: flex; align-items: center; justify-content: center; }
+    .fd-cat-grid-thumb { width: 60px; height: 60px; border-radius: 50%; background: #fff; margin: 0 auto 8px; overflow: hidden; border: 4px solid #fff; box-shadow: 0 10px 20px rgba(0,0,0,0.08); display: flex; align-items: center; justify-content: center; }
     .fd-cat-grid-thumb img { width: 100%; height: 100%; object-fit: cover; }
-    .fd-cat-grid-item:hover .fd-cat-grid-thumb { border-color: #d63638; }
-    .fd-cat-grid-item span { display: block; font-weight: 700; color: #1a1a1a; font-size: 15px; }
-
-    /* --- LAYOUT --- */
+    .fd-cat-grid-item span { display: block; font-weight: 700; color: #1a1a1a; font-size: 14px; }
     .fd-container { display: flex; flex-wrap: wrap; gap: 40px; }
     .fd-menu-section { flex: 1; min-width: 320px; }
     .fd-cart-sidebar { width: 380px; }
-
-    /* --- FOOD ITEMS --- */
-    .food-menu-style-two-content { margin-bottom: 60px; scroll-margin-top: 40px; }
     .sub-heading { font-size: 28px; font-weight: 800; margin-bottom: 30px; color: #1a1a1a; border-left: 6px solid #d63638; padding-left: 20px; }
     .meal-items { list-style: none; padding: 0; margin: 0; }
     .meal-items li { display: flex; align-items: flex-start; background: #fff; padding: 25px; border-radius: 20px; margin-bottom: 25px; border: 1px solid #f1f1f1; transition: 0.3s; box-shadow: 0 4px 6px rgba(0,0,0,0.02); }
@@ -305,37 +270,20 @@ function fd_food_items_shortcode() {
     .meal-items li .content .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
     .meal-items li .content .top .title h4 { margin: 0; font-size: 21px; font-weight: 700; color: #1a1a1a; }
     .meal-items li .content .top .price span { color: #d63638; font-weight: 800; font-size: 21px; }
-
-    /* --- PICKUP/DELIVERY TOGGLE --- */
     .fd-order-type { display: flex; gap: 10px; margin-bottom: 25px; background: #f0f0f1; padding: 6px; border-radius: 12px; }
     .fd-type-label { flex: 1; text-align: center; cursor: pointer; padding: 10px; border-radius: 8px; font-weight: 700; transition: 0.3s; color: #666; }
     .fd-order-type input { display: none; }
     .fd-order-type input:checked + .fd-type-label { background: #d63638; color: #fff; }
-
-    /* --- STICKY CART --- */
     .fd-sticky-panel { position: sticky; top: 30px; background: #fff; border-radius: 25px; padding: 35px; border: 1px solid #eee; box-shadow: 0 20px 50px rgba(0,0,0,0.08); display: flex; flex-direction: column; max-height: 85vh; }
-    #fd-cart-list { overflow-y: auto; flex-grow: 1; margin-bottom: 15px; padding-right: 10px; }
-    #fd-cart-list::-webkit-scrollbar { width: 5px; }
-    #fd-cart-list::-webkit-scrollbar-thumb { background: #d63638; border-radius: 10px; }
-
-    /* --- QTY BUTTONS ICONS --- */
-    .fd-minus, .fd-plus { width: 28px; height: 28px; border-radius: 50%; border: 1px solid #ddd; background: #fff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: 0.2s; padding: 0; color: #1a1a1a; }
-    .fd-minus:hover, .fd-plus:hover { background: #d63638; color: #fff !important; border-color: #d63638; }
-    .fd-cart-item .dashicons { font-size: 16px; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; }
-    .fd-delete:hover { transform: scale(1.1); color: #d63638 !important; }
-
+    #fd-cart-list { overflow-y: auto; flex-grow: 1; margin-bottom: 15px; }
+    .fd-minus, .fd-plus { width: 28px; height: 28px; border-radius: 50%; border: 1px solid #ddd; background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; }
     .fd-cart-item { border-bottom: 1px solid #f8f8f8; padding: 15px 0; }
+    .fd-checkout-btn { display: block; text-align: center; background:#d63638; color:#fff !important; padding:20px; border-radius:15px; margin-top:10px; font-weight:800; text-decoration: none !important; }
     .order-btn { margin-top: 15px; padding: 12px 30px; background: #d63638; color: #fff; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; }
-    .fd-checkout-btn { display: block; text-align: center; text-decoration: none !important; width:100%; background:#d63638; color:#fff !important; padding:20px; border-radius:15px; margin-top:10px; font-weight:800; }
-
-    @media (max-width: 991px) {
-        .fd-cart-sidebar { width: 100%; order: -1; }
-        .fd-sticky-panel { position: static; margin-bottom: 40px; max-height: none; }
-    }
+    @media (max-width: 991px) { .fd-cart-sidebar { width: 100%; order: -1; } .fd-sticky-panel { position: static; max-height: none; } }
 </style>
 
 <div class="fd-main-wrapper">
-    
     <div class="fd-search-container">
         <span class="fd-search-icon">🔍</span>
         <input type="text" id="fd-menu-search" class="fd-menu-search" placeholder="Search for your favorite food...">
@@ -344,9 +292,7 @@ function fd_food_items_shortcode() {
     <div class="fd-category-grid">
         <?php foreach ($items_by_cat as $slug => $cat) : ?>
             <a href="#cat-<?php echo esc_attr($slug); ?>" class="fd-cat-grid-item">
-                <div class="fd-cat-grid-thumb">
-                    <img src="<?php echo esc_url($cat['img']); ?>" alt="<?php echo esc_html($cat['name']); ?>">
-                </div>
+                <div class="fd-cat-grid-thumb"><img src="<?php echo esc_url($cat['img']); ?>" alt="Category"></div>
                 <span><?php echo esc_html($cat['name']); ?></span>
             </a>
         <?php endforeach; ?>
@@ -399,7 +345,7 @@ function fd_food_items_shortcode() {
                     <div class="fd-cart-summary-footer" style="border-top: 2px dashed #eee; padding-top: 15px;">
                         <div id="fd-fee-wrap" style="display:flex; justify-content:space-between; margin-bottom:10px; color:#666;">
                             <span>Delivery Fee</span>
-                            <span><?php echo $currency . number_format($delivery_fee, 2); ?></span>
+                            <span id="fd-display-fee"><?php echo $currency . number_format(floatval($saved_delivery_fee), 2); ?></span>
                         </div>
                         <div style="display:flex; justify-content:space-between; font-weight:800; font-size: 1.5rem;">
                             <span>Total</span>
@@ -421,7 +367,9 @@ function fd_food_items_shortcode() {
 <script>
 jQuery(document).ready(function($){
     let cart = JSON.parse(localStorage.getItem('fd_cart_save')) || [];
-    const deliveryFee = <?php echo $delivery_fee; ?>;
+    
+    // UPDATED: JavaScript now uses the dynamic value from PHP
+    const deliveryFee = parseFloat("<?php echo $saved_delivery_fee; ?>") || 0;
     const currency = "<?php echo $currency; ?>";
     const isLoggedIn = <?php echo $is_logged_in; ?>;
 
@@ -442,18 +390,14 @@ jQuery(document).ready(function($){
             subtotal += rowTotal;
             container.append(`
                 <div class="fd-cart-item">
-                    <button class="fd-delete" data-index="${index}" style="color:#ff4d4d; background:none; border:none; float:right; cursor:pointer; padding: 5px;">
+                    <button class="fd-delete" data-index="${index}" style="color:#ff4d4d; background:none; border:none; float:right; cursor:pointer;">
                         <span class="dashicons dashicons-trash"></span>
                     </button>
-                    <div style="font-weight:700; color:#1a1a1a; margin-bottom:5px;">${item.name}</div>
-                    <div style="display:flex; align-items:center; gap:12px;">
-                        <button class="fd-minus" data-index="${index}">
-                            <span class="dashicons dashicons-minus"></span>
-                        </button>
-                        <span style="font-weight:800; min-width: 20px; text-align: center;">${item.qty}</span>
-                        <button class="fd-plus" data-index="${index}">
-                            <span class="dashicons dashicons-plus"></span>
-                        </button>
+                    <div style="font-weight:700; color:#1a1a1a;">${item.name}</div>
+                    <div style="display:flex; align-items:center; gap:12px; margin-top:5px;">
+                        <button class="fd-minus" data-index="${index}"><span class="dashicons dashicons-minus"></span></button>
+                        <span style="font-weight:800;">${item.qty}</span>
+                        <button class="fd-plus" data-index="${index}"><span class="dashicons dashicons-plus"></span></button>
                         <span style="margin-left:auto; font-weight:700; color:#d63638;">${currency}${rowTotal.toFixed(2)}</span>
                     </div>
                 </div>
@@ -472,7 +416,7 @@ jQuery(document).ready(function($){
         localStorage.setItem('fd_cart_save', JSON.stringify(cart));
     }
 
-    // Live Search
+    // Handlers
     $('#fd-menu-search').on('keyup', function() {
         let val = $(this).val().toLowerCase();
         $('.fd-food-card').each(function() {
@@ -484,7 +428,6 @@ jQuery(document).ready(function($){
         });
     });
 
-    // Button Events
     $(document).on('click', '.order-btn', function() {
         const name = $(this).data('name'), price = parseFloat($(this).data('price'));
         const existing = cart.find(i => i.name === name);
@@ -504,11 +447,7 @@ jQuery(document).ready(function($){
     $(document).on('click', '#fd-checkout-trigger', function(e) {
         e.preventDefault();
         if(cart.length === 0) return;
-        if(!isLoggedIn) {
-            window.location.href = "<?php echo esc_url($login_url); ?>?redirect_to=" + encodeURIComponent(window.location.href);
-        } else {
-            window.location.href = "<?php echo esc_url( home_url('/checkout') ); ?>";
-        }
+        window.location.href = !isLoggedIn ? "<?php echo esc_url($login_url); ?>?redirect_to=" + encodeURIComponent(window.location.href) : "<?php echo esc_url( home_url('/checkout') ); ?>";
     });
 
     updateCart();

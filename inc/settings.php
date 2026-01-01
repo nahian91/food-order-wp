@@ -1,160 +1,278 @@
 <?php
 
 /**
- * Global function to check restaurant status
- * Included here to ensure the Settings Tab can access it for the Live Badge
+ * Enhanced global function to check restaurant status with dynamic minute warning
  */
 if ( ! function_exists( 'get_afd_restaurant_status' ) ) {
     function get_afd_restaurant_status() {
-        $open_time    = get_option('afd_open_time', '09:00');
-        $close_time   = get_option('afd_close_time', '22:00');
-        $work_days    = get_option('afd_work_days', []);
-        $closed_msg   = get_option('afd_status_message', 'Sorry, we are currently closed!');
+        $schedule    = get_option('afd_schedule', []);
+        $closed_msg  = get_option('afd_status_message', 'Sorry, we are currently closed!');
+        // Note: We use %min% as a placeholder for the smart logic
+        $warning_msg = get_option('afd_warning_message', 'Hurry! We are closing in %min% minutes.');
 
         $now          = current_datetime(); 
         $current_day  = $now->format('D'); 
         $current_time = $now->format('H:i');
+        $current_ts   = strtotime($current_time);
 
-        // Robust comparison using timestamps
-        $current_ts = strtotime($current_time);
-        $open_ts    = strtotime($open_time);
-        $close_ts   = strtotime($close_time);
-
-        $is_open_day  = in_array($current_day, $work_days);
-        $is_open_time = ($current_ts >= $open_ts && $current_ts <= $close_ts);
-
-        if (!$is_open_day || !$is_open_time) {
-            return ['is_open' => false, 'message' => $closed_msg];
+        if (empty($schedule[$current_day]) || !isset($schedule[$current_day]['enabled'])) {
+            return ['is_open' => false, 'status' => 'closed', 'message' => $closed_msg];
         }
-        return ['is_open' => true, 'message' => ''];
+
+        $day_settings = $schedule[$current_day];
+        $open_ts      = strtotime($day_settings['open']);
+        $close_ts     = strtotime($day_settings['close']);
+
+        // Handle overnight schedules (e.g., Open 18:00 - Close 02:00)
+        $is_open = ($close_ts < $open_ts) 
+            ? ($current_ts >= $open_ts || $current_ts <= $close_ts) 
+            : ($current_ts >= $open_ts && $current_ts <= $close_ts);
+
+        if (!$is_open) return ['is_open' => false, 'status' => 'closed', 'message' => $closed_msg];
+
+        // --- SMART 30 Min Warning Logic ---
+        if ($current_ts >= ($close_ts - 1800) && $current_ts < $close_ts) {
+            $seconds_left = $close_ts - $current_ts;
+            $minutes_left = ceil($seconds_left / 60);
+            
+            // Replace placeholder with actual minutes
+            $final_warning = str_replace('%min%', $minutes_left, $warning_msg);
+            
+            return ['is_open' => true, 'status' => 'warning', 'message' => $final_warning];
+        }
+
+        return ['is_open' => true, 'status' => 'open', 'message' => ''];
     }
 }
 
 function fd_settings_tab() {
-    // 1. Process Data Saving
     if (isset($_POST['afd_save_settings'])) {
-        update_option('afd_open_time', sanitize_text_field($_POST['afd_open_time']));
-        update_option('afd_close_time', sanitize_text_field($_POST['afd_close_time']));
         update_option('afd_status_message', sanitize_textarea_field($_POST['afd_status_message']));
+        update_option('afd_warning_message', sanitize_textarea_field($_POST['afd_warning_message']));
+        update_option('afd_delivery_charge', sanitize_text_field($_POST['afd_delivery_charge']));
         
-        $selected_days = isset($_POST['afd_work_days']) ? $_POST['afd_work_days'] : [];
-        update_option('afd_work_days', $selected_days);
+        $new_schedule = [];
+        $days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        foreach ($days as $day) {
+            $new_schedule[$day] = [
+                'enabled' => isset($_POST['afd_sched'][$day]['enabled']),
+                'open'    => sanitize_text_field($_POST['afd_sched'][$day]['open'] ?: '09:00'),
+                'close'   => sanitize_text_field($_POST['afd_sched'][$day]['close'] ?: '22:00'),
+            ];
+        }
+        update_option('afd_schedule', $new_schedule);
         
-        echo '<div class="notice notice-success is-dismissible"><p>Settings updated successfully.</p></div>';
+        echo '<div class="afd-sync-toast">
+                <span class="dashicons dashicons-saved"></span>
+                Settings synchronized successfully
+              </div>';
     }
 
-    // 2. Fetch Values
-    $open_time  = get_option('afd_open_time', '09:00');
-    $close_time = get_option('afd_close_time', '22:00');
-    $message    = get_option('afd_status_message', 'Sorry, we are currently closed!');
-    $work_days  = get_option('afd_work_days', ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']); 
-    
-    $days_of_week = [
-        'Mon' => 'Mon', 'Tue' => 'Tue', 'Wed' => 'Wed', 
-        'Thu' => 'Thu', 'Fri' => 'Fri', 'Sat' => 'Sat', 'Sun' => 'Sun'
-    ];
+    $schedule        = get_option('afd_schedule', []);
+    $message         = get_option('afd_status_message', 'Sorry, we are currently closed!');
+    $warning_msg     = get_option('afd_warning_message', 'Hurry! We are closing in %min% minutes.');
+    $delivery_charge = get_option('afd_delivery_charge', '0.00');
+    $status_info     = get_afd_restaurant_status();
+    $days_of_week    = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-    $status = get_afd_restaurant_status();
-    $wp_timezone = wp_timezone_string();
-    $current_wp_time = current_datetime()->format('H:i');
+    $badge_map = [
+        'open'    => ['class' => 'badge-open', 'text' => '● LIVE: OPEN'],
+        'warning' => ['class' => 'badge-warning', 'text' => '● CLOSING SOON'],
+        'closed'  => ['class' => 'badge-closed', 'text' => '● LIVE: CLOSED']
+    ];
+    $current_badge = $badge_map[$status_info['status']];
     ?>
 
-    <div class="afd-tab-content">
-        <div class="afd-card">
-            <div class="afd-card-header" style="display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <h3><span class="dashicons dashicons-clock"></span> Restaurant Schedule</h3>
-                    <p>System Time: <strong><?php echo $current_wp_time; ?></strong> | Timezone: <code><?php echo $wp_timezone; ?></code></p>
-                </div>
-                <div class="afd-status-badge <?php echo $status['is_open'] ? 'is-open' : 'is-closed'; ?>">
-                    <?php echo $status['is_open'] ? '● LIVE: OPEN' : '● LIVE: CLOSED'; ?>
+    <div class="afd-wrapper">
+        <div class="afd-header-main slide-down">
+            <div class="header-left">
+                <h1>Restaurant Operations</h1>
+                <p>Manage your store availability, delivery fees, and customer alerts.</p>
+                <div class="afd-system-time">
+                    <span class="dashicons dashicons-clock"></span> 
+                    System Time: <strong><?php echo current_datetime()->format('H:i'); ?></strong> 
+                    <span class="time-sep-pipe">|</span> 
+                    Timezone: <code><?php echo wp_timezone_string(); ?></code>
                 </div>
             </div>
+            <div class="afd-live-status <?php echo $current_badge['class']; ?>">
+                <span class="pulse-dot"></span>
+                <?php echo $current_badge['text']; ?>
+            </div>
+        </div>
 
-            <form method="post" action="">
-                <div class="afd-settings-grid">
+        <?php if($status_info['status'] === 'warning'): ?>
+            <div class="afd-smart-preview">
+                <span class="dashicons dashicons-info"></span>
+                <strong>Live Preview:</strong> <?php echo $status_info['message']; ?>
+            </div>
+        <?php endif; ?>
+
+        <form method="post" action="">
+            <div class="afd-grid">
+                
+                <div class="afd-card slide-left">
+                    <div class="card-title">
+                        <span class="dashicons dashicons-calendar-alt"></span>
+                        <h2>Weekly Operating Hours</h2>
+                    </div>
                     
-                    <div class="afd-settings-section">
-                        <h4>Operating Days</h4>
-                        <p class="afd-hint-text">Green = Open | Red = Closed</p>
-                        
-                        <div class="afd-days-selector">
-                            <?php foreach ($days_of_week as $key => $label) : 
-                                $is_checked = in_array($key, $work_days);
-                            ?>
-                                <label class="day-pill">
-                                    <input type="checkbox" name="afd_work_days[]" value="<?php echo $key; ?>" <?php checked($is_checked); ?>>
-                                    <span class="day-name"><?php echo $label; ?></span>
+                    <div class="schedule-container">
+                        <?php foreach ($days_of_week as $index => $day) : 
+                            $data = isset($schedule[$day]) ? $schedule[$day] : ['enabled' => false, 'open' => '09:00', 'close' => '22:00'];
+                        ?>
+                            <div class="schedule-row <?php echo $data['enabled'] ? 'is-active' : ''; ?>" style="animation-delay: <?php echo $index * 0.05; ?>s">
+                                <label class="day-pill-toggle">
+                                    <input type="checkbox" name="afd_sched[<?php echo $day; ?>][enabled]" class="day-check" <?php checked($data['enabled']); ?>>
+                                    <span class="day-name"><?php echo $day; ?></span>
                                 </label>
-                            <?php endforeach; ?>
-                        </div>
-
-                        <h4 style="margin-top:30px;">Shift Hours</h4>
-                        <div class="afd-time-picker-row">
-                            <div class="afd-time-field">
-                                <label><span class="dashicons dashicons-external"></span> Opens At</label>
-                                <input type="time" name="afd_open_time" value="<?php echo esc_attr($open_time); ?>">
+                                
+                                <div class="time-input-group">
+                                    <input type="time" name="afd_sched[<?php echo $day; ?>][open]" value="<?php echo $data['open']; ?>">
+                                    <span class="dashicons dashicons-arrow-right-alt"></span>
+                                    <input type="time" name="afd_sched[<?php echo $day; ?>][close]" value="<?php echo $data['close']; ?>">
+                                </div>
+                                
+                                <div class="row-status">
+                                    <?php echo $data['enabled'] ? '<span class="status-on">Open</span>' : '<span class="status-off">Closed</span>'; ?>
+                                </div>
                             </div>
-                            <div class="afd-time-field">
-                                <label><span class="dashicons dashicons-download"></span> Closes At</label>
-                                <input type="time" name="afd_close_time" value="<?php echo esc_attr($close_time); ?>">
-                            </div>
-                        </div>
+                        <?php endforeach; ?>
                     </div>
-
-                    <div class="afd-settings-section">
-                        <h4>Closure Notification</h4>
-                        <div class="afd-input-group">
-                            <label>Frontend Message</label>
-                            <textarea name="afd_status_message" rows="7" placeholder="e.g. We are closed for the day..."><?php echo esc_textarea($message); ?></textarea>
-                        </div>
-                    </div>
-
                 </div>
 
-                <div class="afd-card-footer">
-                    <button type="submit" name="afd_save_settings" class="afd-save-btn">
+                <div class="afd-sidebar slide-right">
+                    <div class="afd-card mini-card">
+                        <div class="card-title">
+                            <span class="dashicons dashicons-money-alt"></span>
+                            <h2>Financials</h2>
+                        </div>
+                        <div class="input-field">
+                            <label>Delivery Charge (£)</label>
+                            <div class="currency-input">
+                                <span class="currency-symbol">£</span>
+                                <input type="text" name="afd_delivery_charge" value="<?php echo esc_attr($delivery_charge); ?>" placeholder="0.00">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="afd-card">
+                        <div class="card-title">
+                            <span class="dashicons dashicons-megaphone"></span>
+                            <h2>Store Messaging</h2>
+                        </div>
+                        <div class="input-field">
+                            <label>Warning (Closing Soon)</label>
+                            <textarea name="afd_warning_message" rows="2" placeholder="Use %min% for dynamic minutes"><?php echo esc_textarea($warning_msg); ?></textarea>
+                            <p style="font-size:10px; color:#64748b; margin-top:5px;">Tip: Use <code>%min%</code> to show exact minutes left.</p>
+                        </div>
+                        <div class="input-field" style="margin-top:15px;">
+                            <label>Store Closed Message</label>
+                            <textarea name="afd_status_message" rows="3"><?php echo esc_textarea($message); ?></textarea>
+                        </div>
+                    </div>
+
+                    <button type="submit" name="afd_save_settings" class="afd-save-button">
                         <span class="dashicons dashicons-saved"></span> Save Configuration
                     </button>
                 </div>
-            </form>
-        </div>
+            </div>
+        </form>
     </div>
 
     <style>
-        .afd-status-badge { padding: 8px 16px; border-radius: 20px; font-weight: 800; font-size: 12px; letter-spacing: 1px; }
-        .is-open { background: #f0f9eb; color: #67c23a; border: 1px solid #c2e7b0; }
-        .is-closed { background: #ffeded; color: #f56c6c; border: 1px solid #fbc4c4; }
-
-        .afd-tab-content { padding: 10px; font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Oxygen-Sans,Ubuntu,Cantarell,"Helvetica Neue",sans-serif; }
-        .afd-card { background: #fff; border-radius: 12px; border: 1px solid #dcdfe6; box-shadow: 0 2px 12px 0 rgba(0,0,0,.1); overflow: hidden; }
-        .afd-card-header { padding: 20px 25px; border-bottom: 1px solid #f0f2f5; background: #fafafa; }
-        .afd-card-header h3 { margin: 0; color: #1f2f3d; font-size: 18px; display: flex; align-items: center; gap: 8px; }
+        /* Existing Styles ... */
+        .afd-wrapper { max-width: 1000px; margin: 20px 0; font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; color: #1e293b; }
         
-        .afd-settings-grid { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 40px; padding: 30px 25px; }
-        .afd-settings-section h4 { margin: 0 0 15px 0; font-size: 14px; color: #606266; text-transform: uppercase; letter-spacing: 1px; }
-        .afd-hint-text { font-size: 12px; color: #909399; margin-bottom: 15px; }
-
-        .afd-days-selector { display: flex; gap: 10px; flex-wrap: wrap; }
-        .day-pill input { display: none; }
-        .day-name { 
-            display: block; padding: 10px 15px; border-radius: 6px; cursor: pointer;
-            font-weight: 600; font-size: 13px; text-align: center; min-width: 45px;
-            transition: all 0.2s ease;
-            background: #ffeded; color: #f56c6c; border: 1px solid #fbc4c4; 
+        .afd-smart-preview {
+            background: #fffbeb;
+            border: 1px solid #fde68a;
+            color: #92400e;
+            padding: 12px 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            animation: slideInUp 0.3s ease-out;
         }
-        .day-pill input:checked + .day-name { background: #f0f9eb; color: #67c23a; border-color: #c2e7b0; }
+
+        .afd-sync-toast {
+            position: fixed; top: 40px; right: 40px; background: #10b981; color: #fff; 
+            padding: 15px 25px; border-radius: 12px; z-index: 9999; font-weight: 700;
+            display: flex; align-items: center; gap: 10px; box-shadow: 0 10px 25px -5px rgba(16, 185, 129, 0.4);
+            animation: toastIn 0.5s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards, fadeOut 0.5s 3s forwards;
+        }
+
+        @keyframes toastIn { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes fadeOut { to { opacity: 0; visibility: hidden; } }
+        @keyframes slideInUp { from { transform: translateY(15px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes pulseGlow { 0% { box-shadow: 0 0 0 0 rgba(103, 194, 58, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(103, 194, 58, 0); } 100% { box-shadow: 0 0 0 0 rgba(103, 194, 58, 0); } }
+
+        .slide-down { animation: slideInUp 0.4s ease-out; }
+        .slide-left { animation: slideInUp 0.5s ease-out; }
+        .slide-right { animation: slideInUp 0.6s ease-out; }
+
+        .afd-header-main { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 25px; padding-bottom: 20px; border-bottom: 1px solid #e2e8f0; }
+        .header-left h1 { margin: 0; font-size: 22px; font-weight: 800; }
+        .header-left p { margin: 4px 0 12px; color: #64748b; font-size: 14px; }
+        .afd-system-time { font-size: 12px; color: #475569; background: #f1f5f9; padding: 6px 12px; border-radius: 6px; display: inline-flex; align-items: center; gap: 6px; }
+
+        .afd-live-status { display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 20px; font-weight: 800; font-size: 11px; letter-spacing: 0.5px; }
+        .badge-open { background: #f0f9eb; color: #67c23a; border: 1px solid #c2e7b0; animation: pulseGlow 2s infinite; }
+        .badge-warning { background: #fdf6ec; color: #e6a23c; border: 1px solid #f5dab1; }
+        .badge-closed { background: #ffeded; color: #f56c6c; border: 1px solid #fbc4c4; }
+        .pulse-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+        .afd-grid { display: grid; grid-template-columns: 1fr 340px; gap: 20px; }
+        .afd-card { background: #fff; border-radius: 12px; border: 1px solid #e2e8f0; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); transition: 0.3s; }
+        .afd-card:hover { border-color: #cbd5e1; }
+        .card-title { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid #f1f5f9; padding-bottom: 12px; }
+        .card-title h2 { font-size: 14px; font-weight: 700; margin: 0; text-transform: uppercase; }
+
+        .schedule-row { display: flex; align-items: center; gap: 15px; padding: 10px; border-radius: 10px; margin-bottom: 4px; border: 1px solid transparent; opacity: 0; animation: slideInUp 0.4s ease forwards; }
+        .schedule-row.is-active { background: #f8fafc; border-color: #e2e8f0; }
         
-        .afd-time-picker-row { display: flex; gap: 20px; }
-        .afd-time-field { flex: 1; }
-        .afd-time-field label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 8px; color: #475569; }
-        .afd-time-field input[type="time"] { width: 100%; padding: 10px; border: 1px solid #dcdfe6; border-radius: 6px; font-size: 15px; }
-        
-        .afd-input-group textarea { width: 100%; border: 1px solid #dcdfe6; border-radius: 6px; padding: 12px; font-size: 14px; resize: none; }
-        .afd-card-footer { padding: 20px 25px; background: #fafafa; border-top: 1px solid #f0f2f5; text-align: right; }
-        .afd-save-btn { background: #2271b1; color: #fff; border: none; padding: 12px 25px; border-radius: 6px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
-        
-        @media (max-width: 900px) { .afd-settings-grid { grid-template-columns: 1fr; } }
+        .day-pill-toggle input { display: none; }
+        .day-name { display: block; width: 45px; text-align: center; padding: 8px 0; border-radius: 6px; background: #ffeded; color: #f56c6c; border: 1px solid #fbc4c4; font-weight: 700; font-size: 12px; cursor: pointer; transition: 0.2s; }
+        .day-check:checked + .day-name { background: #67c23a; color: #fff; border-color: #5daf34; box-shadow: 0 3px 8px rgba(103, 194, 58, 0.2); }
+
+        .time-input-group { display: flex; align-items: center; gap: 8px; opacity: 0.3; pointer-events: none; transition: 0.3s; }
+        .schedule-row.is-active .time-input-group { opacity: 1; pointer-events: all; }
+        .time-input-group input { border: 1px solid #cbd5e1; border-radius: 6px; padding: 5px; font-weight: 600; transition: 0.2s; }
+        .time-input-group input:focus { border-color: #2271b1; box-shadow: 0 0 0 2px rgba(34, 113, 177, 0.1); outline: none; }
+
+        .row-status { margin-left: auto; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+        .status-on { color: #67c23a; }
+        .status-off { color: #94a3b8; }
+
+        .currency-input { position: relative; display: flex; align-items: center; }
+        .currency-symbol { position: absolute; left: 12px; font-weight: 700; color: #64748b; }
+        .currency-input input { width: 100%; padding: 8px 8px 8px 28px; border: 1px solid #cbd5e1; border-radius: 8px; font-weight: 600; }
+        textarea { width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; font-size: 13px; resize: none; transition: 0.2s; }
+        textarea:focus { border-color: #2271b1; outline: none; box-shadow: 0 0 0 2px rgba(34, 113, 177, 0.1); }
+
+        .afd-save-button { width: 100%; padding: 14px; background: #2271b1; color: #fff; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: 0.2s; }
+        .afd-save-button:hover { background: #135e96; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(34, 113, 177, 0.2); }
+
+        @media (max-width: 850px) { .afd-grid { grid-template-columns: 1fr; } }
     </style>
+
+    <script>
+        document.querySelectorAll('.day-check').forEach(input => {
+            input.addEventListener('change', function() {
+                const row = this.closest('.schedule-row');
+                const statusDiv = row.querySelector('.row-status');
+                if(this.checked) {
+                    row.classList.add('is-active');
+                    statusDiv.innerHTML = '<span class="status-on">Open</span>';
+                } else {
+                    row.classList.remove('is-active');
+                    statusDiv.innerHTML = '<span class="status-off">Closed</span>';
+                }
+            });
+        });
+    </script>
     <?php
 }

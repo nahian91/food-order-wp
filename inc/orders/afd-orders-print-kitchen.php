@@ -1,141 +1,99 @@
 <?php
 if (!defined('ABSPATH')) exit;
 
-// -------------------- Kitchen Print --------------------
-if (isset($_GET['action'], $_GET['order_id']) && $_GET['action'] === 'print') {
-
+if (isset($_GET['action']) && $_GET['action'] === 'print' && $_GET['type'] === 'kitchen') {
+    
+    global $wpdb;
     $order_id = intval($_GET['order_id']);
-    $customer_name    = get_post_meta($order_id, 'customer_name', true);
-    $customer_phone   = get_post_meta($order_id, 'customer_phone', true);
-    $customer_address = get_post_meta($order_id, 'customer_address', true);
-    $notes            = get_post_meta($order_id, 'notes', true);
-    $status           = get_post_meta($order_id, 'status', true);
-    $items            = get_post_meta($order_id, 'order_items', true);
-    $total            = get_post_meta($order_id, 'total_price', true);
-    $order_date       = get_the_date('d/m/Y H:i', $order_id);
+    $table_name = $wpdb->prefix . 'afd_food_orders';
+    $order = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $order_id));
 
+    if (!$order) wp_die('Order not found.');
+
+    // UPDATED: Use the permanent display_id from the database
+    $display_id = !empty($order->display_id) ? $order->display_id : 'REC-' . $order->id;
+    
+    $items = json_decode($order->items_json, true);
     ?>
     <!DOCTYPE html>
-    <html lang="en">
+    <html>
     <head>
         <meta charset="UTF-8">
-        <title>Kitchen Receipt - #<?php echo $order_id; ?></title>
         <style>
-            @page { margin: 0; }
-            body {
-                font-family: "Courier New", Courier, monospace;
-                width: 80mm;
-                margin: 0 auto;
-                padding: 10px;
+            body { 
+                font-family: "Courier New", Courier, monospace; 
+                width: 72mm; 
+                margin: 0 auto; 
+                padding: 5px; 
                 color: #000;
-                line-height: 1.2;
-                background-color: #fff;
             }
-            .center { text-align: center; }
-            .bold { font-weight: bold; }
-            .header { border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 10px; }
-            .order-title { font-size: 26px; margin: 5px 0; }
-            .customer-info { font-size: 14px; margin-bottom: 10px; border-bottom: 1px solid #000; padding-bottom: 5px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 5px; }
-            th { border-bottom: 1px solid #000; text-align: left; padding: 5px 0; font-size: 13px; }
-            td { padding: 8px 0; vertical-align: top; border-bottom: 1px dashed #ccc; }
-            .qty-col { width: 45px; font-size: 20px; font-weight: bold; }
-            .item-col { font-size: 17px; font-weight: bold; }
-            .notes-section { 
-                margin-top: 15px; 
-                padding: 10px; 
-                border: 2px solid #000; 
-                font-size: 16px; 
-                background: #eee;
-                font-weight: bold;
-            }
-            .summary { margin-top: 15px; text-align: right; border-top: 1px solid #000; padding-top: 5px; }
-            .total-row { font-size: 18px; font-weight: bold; }
-            .footer-msg { margin-top: 20px; font-size: 11px; text-align: center; border-bottom: 2px dashed #000; padding-bottom: 10px; }
+            .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 10px; }
+            
+            /* BIG ORDER ID */
+            .main-id { font-size: 38px; font-weight: 900; display: block; margin: 0; line-height: 1.1; }
+            .type-badge { background: #000; color: #fff; padding: 3px 10px; font-size: 20px; font-weight: bold; margin-top: 5px; display: inline-block; }
 
-            @media print {
-                body { width: 100%; padding: 2mm; }
-                .no-print { display: none; }
-            }
+            /* BIG CUSTOMER DETAILS */
+            .customer-section { margin-bottom: 15px; line-height: 1.2; }
+            .cust-name { font-size: 22px; font-weight: 900; text-transform: uppercase; display: block; }
+            .cust-phone { font-size: 20px; font-weight: bold; display: block; margin: 3px 0; }
+            .cust-addr { font-size: 18px; font-weight: bold; border: 1.5px solid #000; padding: 4px; margin-top: 5px; display: block; }
+
+            /* BIG ITEM LIST */
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+            .item-row td { padding: 12px 0; border-bottom: 1px dashed #000; vertical-align: top; }
+            .qty { font-size: 34px; font-weight: 900; width: 55px; line-height: 1; }
+            .item-name { font-size: 21px; font-weight: bold; text-transform: uppercase; line-height: 1.1; }
+
+            .notes-box { background: #000; color: #fff; padding: 10px; margin-top: 15px; font-size: 19px; font-weight: bold; text-align: center; }
+            .footer { text-align: center; margin-top: 20px; font-size: 11px; border-top: 1px solid #000; padding-top: 5px; }
+            
+            @media print { .no-print { display: none; } body { width: 100%; padding: 0; } }
         </style>
     </head>
     <body>
-        <div class="no-print center" style="margin-bottom: 10px;">
-            <button onclick="window.print()" style="padding: 10px 20px; background: #d63638; color: #fff; border: none; cursor: pointer; font-weight: bold;">PRINT KITCHEN COPY</button>
-            <p style="font-size: 11px; color: #666;">Printer should be set to 80mm width.</p>
+
+        <div class="no-print" style="text-align:center; padding: 10px;">
+            <button onclick="window.print()" style="padding: 15px; font-weight: bold; background: #d63638; color: #fff; border: none; border-radius: 5px;">PRINT KITCHEN TICKET</button>
         </div>
 
-        <div class="header center">
-            <div class="bold" style="font-size: 18px;">*** KITCHEN COPY ***</div>
-            <h2 class="order-title">#<?php echo $order_id; ?></h2>
-            <div style="font-size: 13px;"><?php echo $order_date; ?></div>
+        <div class="header">
+            <span class="main-id">#<?php echo esc_html($display_id); ?></span>
+            <div class="type-badge"><?php echo strtoupper($order->order_type); ?></div>
+            <div style="font-size: 13px; margin-top: 5px;"><?php echo date('d/m/Y H:i', strtotime($order->order_date)); ?></div>
         </div>
 
-        <div class="customer-info">
-            <?php if($customer_name): ?>
-                <div><strong>NAME:</strong> <?php echo esc_html($customer_name); ?></div>
-            <?php endif; ?>
-            <?php if($customer_phone): ?>
-                <div><strong>TEL: </strong> <?php echo esc_html($customer_phone); ?></div>
-            <?php endif; ?>
-            <?php if($customer_address): ?>
-                <div style="margin-top:4px;"><strong>ADDR:</strong> <?php echo esc_html($customer_address); ?></div>
+        <div class="customer-section">
+            <span class="cust-name"><?php echo esc_html($order->full_name); ?></span>
+            <span class="cust-phone">TEL: <?php echo esc_html($order->phone); ?></span>
+            <?php if($order->order_type === 'delivery'): ?>
+                <span class="cust-addr">ADDR: <?php echo esc_html($order->address); ?></span>
             <?php endif; ?>
         </div>
 
         <table>
-            <thead>
-                <tr>
-                    <th class="qty-col">QTY</th>
-                    <th class="item-col">ITEM</th>
+            <?php if(is_array($items)) : foreach($items as $item) : ?>
+                <tr class="item-row">
+                    <td class="qty"><?php echo intval($item['qty']); ?>x</td>
+                    <td class="item-name"><?php echo esc_html($item['name']); ?></td>
                 </tr>
-            </thead>
-            <tbody>
-                <?php
-                if(is_array($items) && !empty($items)):
-                    foreach($items as $item):
-                        $qty = isset($item['qty']) ? intval($item['qty']) : 1;
-                        // Item Name Fallback
-                        $item_name = !empty($item['name']) ? $item['name'] : 
-                                    (!empty($item['item_name']) ? $item['item_name'] : 
-                                    (!empty($item['title']) ? $item['title'] : 'Unknown Item'));
-                ?>
-                    <tr>
-                        <td class="qty-col"><?php echo $qty; ?>x</td>
-                        <td class="item-col"><?php echo esc_html($item_name); ?></td>
-                    </tr>
-                <?php
-                    endforeach;
-                else:
-                ?>
-                    <tr><td colspan="2" class="center">No items found</td></tr>
-                <?php endif; ?>
-            </tbody>
+            <?php endforeach; endif; ?>
         </table>
 
-        <?php if($notes): ?>
-            <div class="notes-section">
+        <?php if(!empty($order->notes)) : ?>
+            <div class="notes-box">
                 🚨 INSTRUCTIONS:<br>
-                <?php echo nl2br(esc_html($notes)); ?>
+                <?php echo strtoupper(nl2br(esc_html($order->notes))); ?>
             </div>
         <?php endif; ?>
 
-        <div class="summary">
-            <div class="total-row">TOTAL: <?php echo number_format(floatval($total), 2, '.', '') . ' €'; ?></div>
-            <div style="font-size: 12px; margin-top: 5px;">STATUS: <?php echo esc_html(strtoupper($status)); ?></div>
+        <div class="footer">
+            KITCHEN COPY - ORDER #<?php echo esc_html($display_id); ?><br>
+            *** THANK YOU ***
         </div>
 
-        <div class="footer-msg">
-            --- END OF ORDER ---
-        </div>
-
-        <script>
-            window.onload = function() {
-                window.print();
-            };
-        </script>
     </body>
     </html>
     <?php
-    exit; 
+    exit;
 }

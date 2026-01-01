@@ -209,11 +209,9 @@ add_filter('acf/settings/load_json', function( $paths ) {
     return $paths;
 });
 
-
-
 /**
- * Theme-based Food Ordering System with Items Sub-tabs including Extras
- * Paste into your theme's functions.php
+ * Theme-based Food Ordering System
+ * Custom Table Implementation
  */
 
 if(!defined('ABSPATH')) exit;
@@ -223,25 +221,23 @@ if(!defined('ABSPATH')) exit;
 --------------------------------------------------------------*/
 add_action('init', function(){
 
+    // Food Items (Dishes)
     register_post_type('food_item', [
-        'labels'=>['name'=>'Food Items','singular_name'=>'Food Item'],
-        'public'=>false,'show_ui'=>false,'supports'=>['title','editor','thumbnail'],
+        'labels' => ['name'=>'Food Items','singular_name'=>'Food Item'],
+        'public' => false, 'show_ui' => false, 'supports' => ['title','editor','thumbnail'],
     ]);
 
-    register_post_type('food_order', [
-        'labels'=>['name'=>'Orders','singular_name'=>'Order'],
-        'public'=>false,'show_ui'=>false,'supports'=>['title','editor'],
-    ]);
-
+    // Customers (Optional Profile CPT)
     register_post_type('food_customer', [
-        'labels'=>['name'=>'Customers','singular_name'=>'Customer'],
-        'public'=>false,'show_ui'=>false,'supports'=>['title','editor'],
+        'labels' => ['name'=>'Customers','singular_name'=>'Customer'],
+        'public' => false, 'show_ui' => false, 'supports' => ['title','editor'],
     ]);
 
+    // Categories
     register_taxonomy('food_category','food_item',[
-        'labels'=>['name'=>'Food Categories','singular_name'=>'Food Category'],
-        'hierarchical'=>true,
-        'show_ui'=>false
+        'labels' => ['name'=>'Food Categories','singular_name'=>'Food Category'],
+        'hierarchical' => true,
+        'show_ui' => false
     ]);
 });
 
@@ -254,11 +250,130 @@ add_action('admin_menu', function(){
         'Food Delivery',
         'manage_options',
         'awesome_food_delivery',
-        'fd_main_page',
+        'fd_main_page', // This function must exist to render the page
         'dashicons-carrot',
         20
     );
 });
+
+
+if (!defined('ABSPATH')) exit;
+
+/*--------------------------------------------------------------
+# 1. Database Table Creation (Run on Plugin Init/Activation)
+--------------------------------------------------------------*/
+function afd_create_orders_table() {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'afd_food_orders'; 
+    $charset_collate = $wpdb->get_charset_collate();
+
+    /**
+     * display_id: Stores the permanent ID (e.g., 20251231-0001)
+     * We use varchar(20) to ensure it stores the string exactly.
+     */
+    $sql = "CREATE TABLE $table_name (
+        id bigint(20) NOT NULL AUTO_INCREMENT,
+        display_id varchar(20) DEFAULT '' NOT NULL,
+        customer_id bigint(20) DEFAULT 0 NOT NULL,
+        order_type varchar(50) DEFAULT '' NOT NULL,
+        full_name varchar(255) DEFAULT '' NOT NULL,
+        email varchar(255) DEFAULT '' NOT NULL,
+        phone varchar(50) DEFAULT '' NOT NULL,
+        address text NOT NULL,
+        notes text NOT NULL,
+        items_json longtext NOT NULL,
+        subtotal decimal(10,2) DEFAULT '0.00' NOT NULL,
+        delivery_fee decimal(10,2) DEFAULT '0.00' NOT NULL,
+        total_price decimal(10,2) DEFAULT '0.00' NOT NULL,
+        order_status varchar(20) DEFAULT 'pending' NOT NULL,
+        order_date datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        PRIMARY KEY (id)
+    ) $charset_collate;";
+
+    require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
+    dbDelta( $sql );
+}
+// Hook this to init or register_activation_hook
+add_action('init', 'afd_create_orders_table');
+
+
+/*--------------------------------------------------------------
+# 2. Helper: Generate Next Sequential ID
+--------------------------------------------------------------*/
+function afd_generate_unique_display_id() {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'afd_food_orders';
+    
+    $today_date = current_time('Y-m-d');    // For SQL search
+    $date_prefix = current_time('Ymd');     // For the ID string (20251231)
+    
+    /**
+     * IMPORTANT: We count how many orders were created today.
+     * If 0 orders, this becomes 1. If 5 orders, this becomes 6.
+     * Because we SAVE this to the DB, deleting #2 later won't 
+     * change #3 because #3 is already written as text in its own row.
+     */
+    $count_today = $wpdb->get_var($wpdb->prepare(
+        "SELECT COUNT(id) FROM $table_name WHERE DATE(order_date) = %s",
+        $today_date
+    ));
+    
+    $new_sequence = intval($count_today) + 1;
+    
+    // Returns format: 20251231-0001
+    return $date_prefix . '-' . str_pad($new_sequence, 4, '0', STR_PAD_LEFT);
+}
+
+
+/*--------------------------------------------------------------
+# 3. Helper: Insert Custom Order
+--------------------------------------------------------------*/
+function fd_insert_custom_order($data) {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'afd_food_orders';
+
+    // Generate the ID once, right now
+    $permanent_id = afd_generate_unique_display_id();
+
+    $inserted = $wpdb->insert(
+        $table_name,
+        [
+            'display_id'    => $permanent_id, 
+            'customer_id'   => $data['user_id'],
+            'order_type'    => $data['orderType'],
+            'full_name'     => $data['fullName'],
+            'email'         => $data['email'],
+            'phone'         => $data['phone'],
+            'address'       => $data['address'],
+            'notes'         => $data['notes'],
+            'items_json'    => json_encode($data['cart']), 
+            'subtotal'      => $data['subtotal'],
+            'delivery_fee'  => $data['delivery'],
+            'total_price'   => $data['total'],
+            'order_status'  => 'pending',
+            'order_date'    => current_time('mysql')
+        ],
+        [
+            '%s', // display_id
+            '%d', // customer_id
+            '%s', // order_type
+            '%s', // full_name
+            '%s', // email
+            '%s', // phone
+            '%s', // address
+            '%s', // notes
+            '%s', // items_json
+            '%f', // subtotal
+            '%f', // delivery_fee
+            '%f', // total_price
+            '%s', // order_status
+            '%s'  // order_date
+        ]
+    );
+
+    // Return the permanent ID so the checkout script can redirect to the thanks page
+    return $inserted ? $permanent_id : false;
+}
 
 /*--------------------------------------------------------------
 # Main Page with LEFT Tabs + Right Content

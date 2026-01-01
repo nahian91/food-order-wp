@@ -1,166 +1,197 @@
 <?php
+/**
+ * AWESOME FOOD DELIVERY - OPTIMIZED DASHBOARD
+ * Features: Permanent IDs, JS Redirects, Thermal Printing, Auto-Refresh
+ */
 if (!defined('ABSPATH')) exit;
 
-/**
- * Handle Order Deletion
- */
+global $wpdb;
+$table_name = $wpdb->prefix . 'afd_food_orders';
+
+// --- 1. ACTION HANDLERS (Processing before HTML) ---
+
+// ACTION: MARK AS COMPLETE
+if (isset($_GET['action']) && $_GET['action'] === 'mark_complete' && isset($_GET['order_id'])) {
+    $order_id = intval($_GET['order_id']);
+    $wpdb->update($table_name, ['order_status' => 'completed'], ['id' => $order_id]);
+    
+    $redirect_url = admin_url('admin.php?page=awesome_food_delivery&tab=orders');
+    echo "<script>window.location.href='$redirect_url';</script>";
+    exit;
+}
+
+// ACTION: DELETE ORDER
 if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['order_id'])) {
-    if (!isset($_GET['_wpnonce']) || !wp_verify_nonce($_GET['_wpnonce'], 'delete_order_' . $_GET['order_id'])) {
-        wp_die('Security check failed.');
-    }
-    if (!current_user_can('delete_posts')) {
-        wp_die('You do not have permission to delete this.');
-    }
-    $delete_id = intval($_GET['order_id']);
-    if (get_post_type($delete_id) === 'food_order') {
-        wp_delete_post($delete_id, true);
-        echo '<div class="notice notice-success is-dismissible"><p>Order deleted successfully.</p></div>';
+    if (isset($_GET['_wpnonce']) && wp_verify_nonce($_GET['_wpnonce'], 'delete_order_' . $_GET['order_id'])) {
+        $delete_id = intval($_GET['order_id']);
+        $wpdb->delete($table_name, ['id' => $delete_id], ['%d']);
     }
 }
 
-/**
- * Fetch Orders
- */
-$afon_orders = get_posts([
-    'post_type'      => 'food_order',
-    'numberposts'    => 500, 
-    'post_status'    => 'publish',
-    'orderby'        => 'date',
-    'order'          => 'DESC',
-]);
+// ACTION: THERMAL PRINT HANDLER
+if (isset($_GET['action']) && $_GET['action'] === 'print' && isset($_GET['order_id'])) {
+    $order_id = intval($_GET['order_id']);
+    $type = $_GET['type']; // 'kitchen' or 'customer'
+    $order = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $order_id));
+    
+    if ($order) {
+        $display_id = $order->display_id; // Using our NEW permanent column
+        $items = json_decode($order->items_json, true);
+        if (ob_get_length()) ob_clean(); 
+        ?>
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <style>
+                body { font-family: "Courier New", Courier, monospace; width: 72mm; margin: 0 auto; padding: 10px; color: #000; }
+                .text-center { text-align: center; }
+                .header { border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 10px; text-align: center; }
+                .main-id { font-size: 32px; font-weight: 900; }
+                .type-badge { background: #000; color: #fff; padding: 5px; font-size: 18px; font-weight: bold; display: inline-block; margin-top: 5px; text-transform: uppercase; }
+                table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                .item-row td { padding: 8px 0; border-bottom: 1px dashed #000; vertical-align: top; }
+                <?php if($type === 'kitchen'): ?>
+                    .qty { font-size: 34px; font-weight: 900; width: 50px; }
+                    .item-name { font-size: 22px; font-weight: bold; text-transform: uppercase; }
+                <?php else: ?>
+                    .qty { font-size: 18px; font-weight: bold; width: 30px; }
+                    .item-name { font-size: 18px; font-weight: bold; }
+                    .price { text-align: right; font-size: 18px; }
+                    .total-row { font-size: 22px; font-weight: 900; border-top: 2px solid #000; }
+                <?php endif; ?>
+                .notes { background: #000; color: #fff; padding: 8px; margin-top: 10px; text-align: center; font-weight: bold; font-size: 18px; }
+            </style>
+        </head>
+        <body onload="window.print();">
+            <div class="header">
+                <span class="main-id">#<?php echo $display_id; ?></span><br>
+                <div class="type-badge"><?php echo esc_html($order->order_type); ?></div>
+            </div>
+            <div>
+                <strong><?php echo esc_html($order->full_name); ?></strong><br>
+                TEL: <?php echo esc_html($order->phone); ?><br>
+                <?php if($order->order_type === 'delivery'): ?>ADDR: <?php echo esc_html($order->address); ?><?php endif; ?>
+            </div>
+            <table>
+                <?php if(is_array($items)) : foreach($items as $item) : ?>
+                    <tr class="item-row">
+                        <td class="qty"><?php echo $item['qty']; ?>x</td>
+                        <td class="item-name"><?php echo esc_html($item['name']); ?></td>
+                        <?php if($type === 'customer'): ?>
+                            <td class="price"><?php echo number_format($item['price'] * $item['qty'], 2); ?></td>
+                        <?php endif; ?>
+                    </tr>
+                <?php endforeach; endif; ?>
+                <?php if($type === 'customer'): ?>
+                    <tr class="total-row">
+                        <td colspan="2" style="padding-top:10px;">TOTAL</td>
+                        <td class="price" style="padding-top:10px;"><?php echo number_format($order->total_price, 2); ?></td>
+                    </tr>
+                <?php endif; ?>
+            </table>
+            <?php if(!empty($order->notes)): ?>
+                <div class="notes">NOTE: <?php echo strtoupper(esc_html($order->notes)); ?></div>
+            <?php endif; ?>
+            <div class="text-center" style="margin-top:20px; font-size:12px;">
+                *** <?php echo ($type === 'kitchen') ? 'KITCHEN' : 'CUSTOMER'; ?> COPY ***
+            </div>
+        </body>
+        </html>
+        <?php
+        exit;
+    }
+}
 
-// Get Global WordPress Date/Time Formats
-$wp_date_format = get_option('date_format');
+// --- 2. DATA FETCHING ---
+$afon_orders = $wpdb->get_results("SELECT * FROM $table_name ORDER BY id DESC LIMIT 1000");
 $wp_time_format = get_option('time_format');
 ?>
 
 <style>
-    :root { 
-        --res-primary: #d63638; 
-        --res-dark: #1d2327;    
-        --res-border: #ccd0d4; 
-    }
-
+    :root { --res-primary: #d63638; --res-success: #46b450; --res-border: #ccd0d4; }
     .afd-dashboard { margin-top: 20px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    #afon-orders-table { border: 1px solid var(--res-border); border-radius: 8px; overflow: hidden; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,.05); border-collapse: collapse; width: 100%; }
-    #afon-orders-table thead th { background: #fafafa; padding: 15px; font-weight: 700; color: #50575e; border-bottom: 2px solid #f0f0f1; text-transform: uppercase; font-size: 11px; text-align: left; }
-    #afon-orders-table td { padding: 15px; vertical-align: middle; border-bottom: 1px solid #f0f0f1; }
+    #afon-orders-table { border: 1px solid var(--res-border); border-radius: 8px; overflow: hidden; background: #fff; width: 100%; border-collapse: collapse; }
+    #afon-orders-table th { background: #fafafa; padding: 15px; font-weight: 700; text-transform: uppercase; font-size: 11px; text-align: left; border-bottom: 2px solid #f0f0f1; }
+    #afon-orders-table td { padding: 12px 15px; border-bottom: 1px solid #f0f0f1; vertical-align: middle; }
     
-    .afon-id-badge { background: #f6f7f7; color: var(--res-dark); padding: 5px 10px; border-radius: 4px; border: 1px solid var(--res-border); font-family: 'Courier New', monospace; font-weight: 800; font-size: 12px; white-space: nowrap; }
-    .afon-customer-name { font-size: 14px; font-weight: 700; color: var(--res-dark); }
-    .afon-order-time { color: #a7aaad; font-size: 11px; margin-top: 2px; display: block; }
-    
-    .afon-status { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 10px; font-weight: 700; text-transform: uppercase; border: 1px solid transparent; }
-    .status-pending { background: #fff8e5; color: #856404; border-color: #ffeeba; animation: afd-blink-status 1.5s infinite; }
-    .status-completed { background: #ecfdf5; color: #065f46; border-color: #a7f3d0; }
-    .status-cancelled { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
+    .status-pending { background: var(--res-primary) !important; color: #fff !important; padding: 6px 12px; border-radius: 20px; font-size: 10px; font-weight: 800; animation: afd-blink 1s infinite; display: inline-block; }
+    .status-completed { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; padding: 6px 12px; border-radius: 20px; font-size: 10px; font-weight: 800; display: inline-block; }
+    @keyframes afd-blink { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
 
-    @keyframes afd-blink-status { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
-
-    .fd-btn { padding: 6px 10px; border-radius: 6px; text-decoration: none; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; transition: 0.2s; border: 1px solid #dcdcde; background: #fff; color: #2c3338; }
-    .fd-btn:hover { border-color: var(--res-primary); color: var(--res-primary); background: #fff9f9; }
-    
-    /* Action Specific Styles */
-    .fd-btn-kitchen { background: #f0f6ff; color: #2271b1; border-color: #c2d7ef; }
-    .fd-btn-kitchen:hover { background: #2271b1 !important; color: #fff !important; }
-    .fd-btn-delete:hover { background: #fef2f2; border-color: var(--res-primary); color: var(--res-primary); }
-
-    .dataTables_wrapper .dataTables_filter { text-align: left; margin-bottom: 20px; }
-    .dataTables_wrapper .dataTables_filter input { border: 1px solid #c3c4c7; border-radius: 4px; padding: 10px 15px; width: 350px; outline: none; }
+    .fd-btn { padding: 6px 8px; border-radius: 4px; text-decoration: none; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; border: 1px solid #dcdcde; background: #fff; color: #2c3338; margin-left: 2px; }
+    .fd-btn-complete { background: var(--res-success); color: #fff; border-color: #389040; }
+    .fd-btn-complete:hover { background: #389040; color: #fff; }
 </style>
 
 <div class="wrap afd-dashboard">
-    <div style="margin-bottom: 25px;">
-        <h1 style="margin:0; font-weight: 800; font-size: 24px;">Order Management</h1>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h1 style="font-weight: 800; font-size: 24px; margin: 0;">Order Management</h1>
+        <div id="refresh-timer" style="font-size: 12px; color: #666; background: #eee; padding: 5px 12px; border-radius: 20px;">
+            Auto-refresh in: <span id="timer-count">30</span>s
+        </div>
     </div>
-
+    
     <table id="afon-orders-table" class="widefat">
         <thead>
             <tr>
-                <th width="180">Order ID</th>
-                <th>Customer Name</th>
-                <th width="120">Status</th>
-                <th width="400" style="text-align: right;">Actions</th>
+                <th width="160">Order ID</th>
+                <th>Customer</th>
+                <th width="100">Status</th>
+                <th width="480" style="text-align: right;">Actions</th>
             </tr>
         </thead>
         <tbody>
-            <?php if (!empty($afon_orders)) : ?>
-                <?php foreach ($afon_orders as $afon_post) :
-                    $order_id = $afon_post->ID;
-                    $display_id = get_the_title($order_id);
-
-                    // Fetch Meta
-                    $customer = get_post_meta($order_id, 'customer_name', true) ?: 'Guest Order #' . $order_id;
-                    $status = get_post_meta($order_id, 'status', true) ?: 'pending';
-                    $status_slug = strtolower($status);
-                    
-                    // Navigation URLs
-                    $base_url   = admin_url('admin.php?page=awesome_food_delivery&tab=orders&order_id=' . $order_id);
-                    $view_url   = $base_url . '&action=view';
-                    $edit_url   = $base_url . '&action=edit';
-                    $print_customer_url = $base_url . '&action=print&type=customer';
-                    $print_kitchen_url  = $base_url . '&action=print&type=kitchen';
-                    
-                    $delete_url = wp_nonce_url(
-                        $base_url . '&action=delete',
-                        'delete_order_' . $order_id
-                    );
-                ?>
-                    <tr>
-                        <td data-order="<?php echo esc_attr($order_id); ?>">
-                            <span class="afon-id-badge"><?php echo esc_html($display_id); ?></span>
-                        </td>
-                        <td>
-                            <div class="afon-customer-name"><?php echo esc_html($customer); ?></div>
-                            <span class="afon-order-time">
-                                <?php echo get_the_date($wp_date_format, $order_id); ?> at <?php echo get_the_date($wp_time_format, $order_id); ?>
-                            </span>
-                        </td>
-                        <td>
-                            <span class="afon-status status-<?php echo esc_attr($status_slug); ?>">
-                                <?php echo esc_html(ucfirst($status_slug)); ?>
-                            </span>
-                        </td>
-                        <td style="text-align: right;">
-                            <a class="fd-btn" href="<?php echo esc_url($view_url); ?>"><span class="dashicons dashicons-visibility"></span> View</a>
-                            <a class="fd-btn" href="<?php echo esc_url($edit_url); ?>"><span class="dashicons dashicons-edit"></span> Edit</a>
-                            
-                            <a class="fd-btn" href="<?php echo esc_url($print_customer_url); ?>" target="_blank" title="Print Customer Receipt">
-                                <span class="dashicons dashicons-printer"></span> Receipt
+            <?php foreach ($afon_orders as $order) :
+                $order_id = $order->id;
+                $display_id = $order->display_id; // Simple & permanent!
+                $status = strtolower($order->order_status);
+                $base_url = admin_url('admin.php?page=awesome_food_delivery&tab=orders&order_id=' . $order_id);
+            ?>
+                <tr>
+                    <td><strong>#<?php echo esc_html($display_id); ?></strong></td>
+                    <td>
+                        <strong><?php echo esc_html($order->full_name); ?></strong><br>
+                        <span style="font-size:11px; color:#888;"><?php echo date($wp_time_format, strtotime($order->order_date)); ?></span>
+                    </td>
+                    <td><span class="status-<?php echo $status; ?>"><?php echo strtoupper($status); ?></span></td>
+                    <td style="text-align: right;">
+                        <?php if($status !== 'completed'): ?>
+                            <a class="fd-btn fd-btn-complete" href="<?php echo esc_url($base_url . '&action=mark_complete'); ?>" onclick="return confirm('Complete Order #<?php echo $display_id; ?>?')">
+                                <span class="dashicons dashicons-yes"></span> Complete
                             </a>
-
-                            <a class="fd-btn fd-btn-kitchen" href="<?php echo esc_url($print_kitchen_url); ?>" target="_blank" title="Print Kitchen Ticket">
-                                <span class="dashicons dashicons-carrot"></span> Kitchen
-                            </a>
-                            
-                            <a class="fd-btn fd-btn-delete" 
-                               href="<?php echo esc_url($delete_url); ?>" 
-                               onclick="return confirm('Warning: This will permanently delete <?php echo esc_js($display_id); ?>. Continue?')">
-                                 <span class="dashicons dashicons-trash"></span>
-                            </a>
-                        </td>
-                    </tr>
-                <?php endforeach; ?>
-            <?php endif; ?>
+                        <?php endif; ?>
+                        
+                        <a class="fd-btn" href="<?php echo esc_url($base_url . '&action=view'); ?>"><span class="dashicons dashicons-visibility"></span> View</a>
+                        <a class="fd-btn" href="<?php echo esc_url($base_url . '&action=edit'); ?>"><span class="dashicons dashicons-edit"></span> Edit</a>
+                        <a class="fd-btn" href="<?php echo esc_url($base_url . '&action=print&type=customer'); ?>" target="_blank"><span class="dashicons dashicons-printer"></span> Receipt</a>
+                        <a class="fd-btn" href="<?php echo esc_url($base_url . '&action=print&type=kitchen'); ?>" target="_blank"><span class="dashicons dashicons-carrot"></span> Kitchen</a>
+                        
+                        <a class="fd-btn" style="color:var(--res-primary);" href="<?php echo wp_nonce_url($base_url . '&action=delete', 'delete_order_' . $order_id); ?>" onclick="return confirm('Delete #<?php echo $display_id; ?> permanently?')">
+                            <span class="dashicons dashicons-trash"></span>
+                        </a>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
         </tbody>
     </table>
 </div>
 
 <script>
-jQuery(document).ready(function($){
+jQuery(document).ready(function($){ 
+    // 1. DataTables Init
     if ($.fn.DataTable) {
-        $('#afon-orders-table').DataTable({
-            "pageLength": 15,
-            "order": [[0, "desc"]], 
-            "dom": '<"top"f>rt<"bottom"ip><"clear">',
-            "language": {
-                "search": "",
-                "searchPlaceholder": "Search orders (ID, Name, Date)..."
-            },
-            "columnDefs": [ 
-                { "orderable": false, "targets": [3] }
-            ]
-        });
+        $('#afon-orders-table').DataTable({ "order": [[0, "desc"]], "pageLength": 25 }); 
     }
+
+    // 2. Auto Refresh Logic (30 Seconds)
+    var timeLeft = 30;
+    var timer = setInterval(function(){
+        timeLeft--;
+        $('#timer-count').text(timeLeft);
+        if(timeLeft <= 0){
+            location.reload();
+        }
+    }, 1000);
 });
 </script>

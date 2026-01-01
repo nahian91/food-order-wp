@@ -2,35 +2,36 @@
 if (!defined('ABSPATH')) exit;
 
 /**
- * 1. GET DYNAMIC ORDER DATA
+ * 1. GET DYNAMIC ORDER DATA FROM CUSTOM TABLE
  */
+global $wpdb;
 $order_id = intval($_GET['order_id']);
-$order    = get_post($order_id);
+$table_name = $wpdb->prefix . 'afd_food_orders';
+
+// Fetch the order from the custom database table
+$order = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $order_id));
 
 if (!$order) {
     wp_die('Order not found.');
 }
 
-// Item Retrieval (Handles both common meta keys)
-$items = get_post_meta($order_id, 'order_items', true);
-if (empty($items)) {
-    $items = get_post_meta($order_id, 'items', true) ?: [];
-}
+// Data Handling
+$items          = json_decode($order->items_json, true) ?: [];
+$display_id     = !empty($order->display_id) ? $order->display_id : 'INV-' . $order->id;
+$order_date     = date('d/m/Y', strtotime($order->order_date));
 
-// Financials
-$total = get_post_meta($order_id, 'total_price', true) ?: '0.00';
+// Financials from Table Columns
+$subtotal       = floatval($order->subtotal);
+$delivery_fee   = floatval($order->delivery_fee);
+$grand_total    = floatval($order->total_price);
 
-// Dynamic Customer Info
-$cust_name    = get_post_meta($order_id, 'customer_name', true) ?: 'Guest Customer';
-$cust_phone   = get_post_meta($order_id, 'phone', true) ?: 'N/A';
-$cust_email   = get_post_meta($order_id, 'email', true) ?: 'N/A';
-$cust_address = get_post_meta($order_id, 'address', true);
-$order_type   = get_post_meta($order_id, 'order_type', true) ?: 'Delivery';
-$order_status = get_post_meta($order_id, 'status', true) ?: 'Pending';
-
-// Date Formatting
-$wp_date_format = get_option('date_format');
-$formatted_date = get_the_date($wp_date_format, $order_id);
+// Customer Info from Table Columns
+$cust_name      = $order->full_name;
+$cust_phone     = $order->phone;
+$cust_email     = $order->email;
+$cust_address   = $order->address;
+$order_type     = $order->order_type; // 'delivery' or 'collection'
+$order_status   = $order->status;
 ?>
 
 <!DOCTYPE html>
@@ -38,7 +39,7 @@ $formatted_date = get_the_date($wp_date_format, $order_id);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Invoice - <?php echo esc_html(get_the_title($order_id)); ?></title>
+    <title>Invoice - #<?php echo esc_html($display_id); ?></title>
     <style>
         /* A4 Page Setup */
         @page { size: A4; margin: 10mm; }
@@ -115,9 +116,9 @@ $formatted_date = get_the_date($wp_date_format, $order_id);
             </div>
             <div class="meta-box">
                 <h2>INVOICE</h2>
-                <p>Order #<?php echo esc_html(get_the_title($order_id)); ?></p>
-                <p>Date: <?php echo $formatted_date; ?></p>
-                <span class="status-badge"><?php echo esc_html($order_status); ?></span>
+                <p>Order #<?php echo esc_html($display_id); ?></p>
+                <p>Date: <?php echo esc_html($order_date); ?></p>
+                <span class="status-badge"><?php echo esc_html($order->status ?? 'Confirmed'); ?></span>
             </div>
         </header>
 
@@ -131,10 +132,10 @@ $formatted_date = get_the_date($wp_date_format, $order_id);
                 </p>
             </div>
             <div class="details-box">
-                <h3><?php echo esc_html($order_type); ?> Address</h3>
+                <h3><?php echo ucfirst(esc_html($order_type)); ?> Address</h3>
                 <p class="address-box">
                     <?php 
-                    if (!empty($cust_address)) {
+                    if (strtolower($order_type) === 'delivery' && !empty($cust_address)) {
                         echo nl2br(esc_html($cust_address));
                     } else {
                         echo "<strong>STORE COLLECTION</strong><br>524 Hertford Road, London, EN3 5SS";
@@ -154,9 +155,9 @@ $formatted_date = get_the_date($wp_date_format, $order_id);
                 </tr>
             </thead>
             <tbody>
-                <?php foreach($items as $item): 
-                    $price = (float)($item['price'] ?? 0);
-                    $qty   = (int)($item['qty'] ?? 1);
+                <?php if(!empty($items)): foreach($items as $item): 
+                    $price = floatval($item['price']);
+                    $qty   = intval($item['qty']);
                     $line_total = $price * $qty;
                 ?>
                 <tr>
@@ -165,12 +166,16 @@ $formatted_date = get_the_date($wp_date_format, $order_id);
                     <td class="col-price">£<?php echo number_format($price, 2); ?></td>
                     <td class="col-total">£<?php echo number_format($line_total, 2); ?></td>
                 </tr>
-                <?php endforeach; ?>
+                <?php endforeach; endif; ?>
             </tbody>
         </table>
 
         <footer class="footer-flex">
             <div class="notes-section">
+                <?php if(!empty($order->notes)): ?>
+                    <p style="margin:0 0 5px 0; color:#0f172a; font-weight:700;">Order Notes:</p>
+                    <p style="margin-bottom: 20px;"><?php echo nl2br(esc_html($order->notes)); ?></p>
+                <?php endif; ?>
                 <p style="margin:0 0 5px 0; color:#0f172a; font-weight:700;">Thank You!</p>
                 <p style="margin:0;">We appreciate your business. If you have any questions about this invoice, please reach out to us at info@spiceofindia.online.</p>
                 <p style="margin-top:15px; font-weight:700; color:#4338ca;">Enjoy your Spice of India meal!</p>
@@ -178,15 +183,15 @@ $formatted_date = get_the_date($wp_date_format, $order_id);
             <div class="totals-section">
                 <div class="row">
                     <span>Subtotal</span>
-                    <span>£<?php echo number_format((float)$total, 2); ?></span>
+                    <span>£<?php echo number_format($subtotal, 2); ?></span>
                 </div>
                 <div class="row">
                     <span>Delivery Fee</span>
-                    <span>£0.00</span>
+                    <span>£<?php echo number_format($delivery_fee, 2); ?></span>
                 </div>
                 <div class="row grand">
                     <span>Total</span>
-                    <span>£<?php echo number_format((float)$total, 2); ?></span>
+                    <span>£<?php echo number_format($grand_total, 2); ?></span>
                 </div>
             </div>
         </footer>
