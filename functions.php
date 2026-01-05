@@ -260,7 +260,7 @@ add_action('admin_menu', function(){
 if (!defined('ABSPATH')) exit;
 
 /*--------------------------------------------------------------
-# 1. Database Table Creation (Run on Plugin Init/Activation)
+# 1. Database Table Creation (Updated with Scheduled Time)
 --------------------------------------------------------------*/
 function afd_create_orders_table() {
     global $wpdb;
@@ -268,8 +268,8 @@ function afd_create_orders_table() {
     $charset_collate = $wpdb->get_charset_collate();
 
     /**
-     * display_id: Stores the permanent ID (e.g., 20251231-0001)
-     * We use varchar(20) to ensure it stores the string exactly.
+     * display_id: Stores the permanent ID (e.g., 20260105-0001)
+     * scheduled_time: Stores "asap" or the selected time string.
      */
     $sql = "CREATE TABLE $table_name (
         id bigint(20) NOT NULL AUTO_INCREMENT,
@@ -281,6 +281,7 @@ function afd_create_orders_table() {
         phone varchar(50) DEFAULT '' NOT NULL,
         address text NOT NULL,
         notes text NOT NULL,
+        scheduled_time varchar(50) DEFAULT 'asap' NOT NULL,
         items_json longtext NOT NULL,
         subtotal decimal(10,2) DEFAULT '0.00' NOT NULL,
         delivery_fee decimal(10,2) DEFAULT '0.00' NOT NULL,
@@ -293,7 +294,6 @@ function afd_create_orders_table() {
     require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
     dbDelta( $sql );
 }
-// Hook this to init or register_activation_hook
 add_action('init', 'afd_create_orders_table');
 
 
@@ -304,15 +304,9 @@ function afd_generate_unique_display_id() {
     global $wpdb;
     $table_name = $wpdb->prefix . 'afd_food_orders';
     
-    $today_date = current_time('Y-m-d');    // For SQL search
-    $date_prefix = current_time('Ymd');     // For the ID string (20251231)
+    $today_date = current_time('Y-m-d');
+    $date_prefix = current_time('Ymd');
     
-    /**
-     * IMPORTANT: We count how many orders were created today.
-     * If 0 orders, this becomes 1. If 5 orders, this becomes 6.
-     * Because we SAVE this to the DB, deleting #2 later won't 
-     * change #3 because #3 is already written as text in its own row.
-     */
     $count_today = $wpdb->get_var($wpdb->prepare(
         "SELECT COUNT(id) FROM $table_name WHERE DATE(order_date) = %s",
         $today_date
@@ -320,38 +314,42 @@ function afd_generate_unique_display_id() {
     
     $new_sequence = intval($count_today) + 1;
     
-    // Returns format: 20251231-0001
     return $date_prefix . '-' . str_pad($new_sequence, 4, '0', STR_PAD_LEFT);
 }
 
 
 /*--------------------------------------------------------------
-# 3. Helper: Insert Custom Order
+# 3. Helper: Insert Custom Order (Supports Pre-Orders)
 --------------------------------------------------------------*/
 function fd_insert_custom_order($data) {
     global $wpdb;
     $table_name = $wpdb->prefix . 'afd_food_orders';
 
-    // Generate the ID once, right now
+    // Generate the permanent ID
     $permanent_id = afd_generate_unique_display_id();
+
+    // Determine Status: If time is not 'asap', it is a 'preorder'
+    $time_val = isset($data['scheduledTime']) ? $data['scheduledTime'] : 'asap';
+    $status_val = ($time_val === 'asap') ? 'pending' : 'preorder';
 
     $inserted = $wpdb->insert(
         $table_name,
         [
-            'display_id'    => $permanent_id, 
-            'customer_id'   => $data['user_id'],
-            'order_type'    => $data['orderType'],
-            'full_name'     => $data['fullName'],
-            'email'         => $data['email'],
-            'phone'         => $data['phone'],
-            'address'       => $data['address'],
-            'notes'         => $data['notes'],
-            'items_json'    => json_encode($data['cart']), 
-            'subtotal'      => $data['subtotal'],
-            'delivery_fee'  => $data['delivery'],
-            'total_price'   => $data['total'],
-            'order_status'  => 'pending',
-            'order_date'    => current_time('mysql')
+            'display_id'     => $permanent_id, 
+            'customer_id'    => $data['user_id'],
+            'order_type'     => $data['orderType'],
+            'full_name'      => $data['fullName'],
+            'email'          => $data['email'],
+            'phone'          => $data['phone'],
+            'address'        => $data['address'],
+            'notes'          => $data['notes'],
+            'scheduled_time' => $time_val,
+            'items_json'     => json_encode($data['cart']), 
+            'subtotal'       => floatval($data['subtotal']),
+            'delivery_fee'   => floatval($data['delivery']),
+            'total_price'    => floatval($data['total']),
+            'order_status'   => $status_val,
+            'order_date'     => current_time('mysql')
         ],
         [
             '%s', // display_id
@@ -362,6 +360,7 @@ function fd_insert_custom_order($data) {
             '%s', // phone
             '%s', // address
             '%s', // notes
+            '%s', // scheduled_time
             '%s', // items_json
             '%f', // subtotal
             '%f', // delivery_fee
@@ -371,7 +370,6 @@ function fd_insert_custom_order($data) {
         ]
     );
 
-    // Return the permanent ID so the checkout script can redirect to the thanks page
     return $inserted ? $permanent_id : false;
 }
 

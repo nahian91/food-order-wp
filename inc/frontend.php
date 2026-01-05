@@ -196,18 +196,15 @@ add_shortcode('food_categories', 'fd_dynamic_category_carousel_shortcode');
 
 /**
  * SHORTCODE: Main Food Ordering System (Menu + Cart)
+ * Features: Pre-Order Mode & Scheduled Time Selection
  */
 function fd_food_items_shortcode() {
     wp_enqueue_style('dashicons');
 
     // 1. SETTINGS & DYNAMIC DATA
-    $store_status = function_exists('get_afd_restaurant_status') ? get_afd_restaurant_status() : ['is_open' => true];
-    $is_open      = $store_status['is_open'];
-    $open_time    = get_option('afd_open_time', '09:00');
-    $close_time   = get_option('afd_close_time', '22:00');
+    $store_status = function_exists('get_afd_restaurant_status') ? get_afd_restaurant_status() : ['status' => 'open', 'is_open' => true];
+    $is_open      = ($store_status['status'] === 'open');
     $currency     = '£';
-    
-    // UPDATED: Pulling delivery charge from settings
     $saved_delivery_fee = get_option('afd_delivery_charge', '0.00');
 
     // 2. FETCH DATA
@@ -270,16 +267,23 @@ function fd_food_items_shortcode() {
     .meal-items li .content .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
     .meal-items li .content .top .title h4 { margin: 0; font-size: 21px; font-weight: 700; color: #1a1a1a; }
     .meal-items li .content .top .price span { color: #d63638; font-weight: 800; font-size: 21px; }
-    .fd-order-type { display: flex; gap: 10px; margin-bottom: 25px; background: #f0f0f1; padding: 6px; border-radius: 12px; }
+    .fd-order-type { display: flex; gap: 10px; margin-bottom: 15px; background: #f0f0f1; padding: 6px; border-radius: 12px; }
     .fd-type-label { flex: 1; text-align: center; cursor: pointer; padding: 10px; border-radius: 8px; font-weight: 700; transition: 0.3s; color: #666; }
     .fd-order-type input { display: none; }
     .fd-order-type input:checked + .fd-type-label { background: #d63638; color: #fff; }
-    .fd-sticky-panel { position: sticky; top: 30px; background: #fff; border-radius: 25px; padding: 35px; border: 1px solid #eee; box-shadow: 0 20px 50px rgba(0,0,0,0.08); display: flex; flex-direction: column; max-height: 85vh; }
+    .fd-sticky-panel { position: sticky; top: 30px; background: #fff; border-radius: 25px; padding: 30px; border: 1px solid #eee; box-shadow: 0 20px 50px rgba(0,0,0,0.08); display: flex; flex-direction: column; max-height: 90vh; }
     #fd-cart-list { overflow-y: auto; flex-grow: 1; margin-bottom: 15px; }
     .fd-minus, .fd-plus { width: 28px; height: 28px; border-radius: 50%; border: 1px solid #ddd; background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; }
     .fd-cart-item { border-bottom: 1px solid #f8f8f8; padding: 15px 0; }
-    .fd-checkout-btn { display: block; text-align: center; background:#d63638; color:#fff !important; padding:20px; border-radius:15px; margin-top:10px; font-weight:800; text-decoration: none !important; }
+    .fd-checkout-btn { display: block; text-align: center; background:#d63638; color:#fff !important; padding:18px; border-radius:15px; margin-top:10px; font-weight:800; text-decoration: none !important; box-shadow: 0 10px 20px rgba(214, 54, 56, 0.2); }
     .order-btn { margin-top: 15px; padding: 12px 30px; background: #d63638; color: #fff; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; }
+    
+    /* PRE-ORDER UI */
+    .fd-schedule-wrap { margin-bottom: 20px; }
+    .fd-schedule-wrap label { display: block; font-size: 12px; font-weight: 800; text-transform: uppercase; color: #666; margin-bottom: 8px; }
+    .fd-schedule-select { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #ddd; background: #f9f9f9; font-weight: 600; outline: none; }
+    .preorder-badge { background: #fef2f2; border: 1px solid #fee2e2; color: #d63638; padding: 10px; border-radius: 10px; font-size: 13px; font-weight: 700; margin-bottom: 20px; text-align: center; }
+
     @media (max-width: 991px) { .fd-cart-sidebar { width: 100%; order: -1; } .fd-sticky-panel { position: static; max-height: none; } }
 </style>
 
@@ -316,11 +320,9 @@ function fd_food_items_shortcode() {
                                         <div class="price"><span><?php echo $currency . number_format((float)$price, 2); ?></span></div>
                                     </div>
                                     <div class="bottom"><p><?php echo wp_kses_post($item->post_content); ?></p></div>
-                                    <?php if($is_open): ?>
-                                        <div class="order-btn-align">
-                                            <button class="order-btn" data-name="<?php echo esc_attr($item->post_title); ?>" data-price="<?php echo esc_attr($price); ?>">Add to Order</button>
-                                        </div>
-                                    <?php endif; ?>
+                                    <div class="order-btn-align">
+                                        <button class="order-btn" data-name="<?php echo esc_attr($item->post_title); ?>" data-price="<?php echo esc_attr($price); ?>">Add to Order</button>
+                                    </div>
                                 </div>
                             </li>
                         <?php endforeach; ?>
@@ -331,34 +333,48 @@ function fd_food_items_shortcode() {
 
         <div class="fd-cart-sidebar">
             <div class="fd-sticky-panel">
-                <?php if ($is_open) : ?>
-                    <div class="fd-order-type">
-                        <input type="radio" name="order_type" id="delivery" value="delivery" checked>
-                        <label for="delivery" class="fd-type-label">Delivery</label>
-                        <input type="radio" name="order_type" id="pickup" value="pickup">
-                        <label for="pickup" class="fd-type-label">Pickup</label>
-                    </div>
-
-                    <h4 style="margin:0 0 20px 0; font-weight:800; font-size:22px;">Your Cart</h4>
-                    <div id="fd-cart-list"></div>
-
-                    <div class="fd-cart-summary-footer" style="border-top: 2px dashed #eee; padding-top: 15px;">
-                        <div id="fd-fee-wrap" style="display:flex; justify-content:space-between; margin-bottom:10px; color:#666;">
-                            <span>Delivery Fee</span>
-                            <span id="fd-display-fee"><?php echo $currency . number_format(floatval($saved_delivery_fee), 2); ?></span>
-                        </div>
-                        <div style="display:flex; justify-content:space-between; font-weight:800; font-size: 1.5rem;">
-                            <span>Total</span>
-                            <span style="color:#d63638;"><?php echo $currency; ?><span id="fd-total">0.00</span></span>
-                        </div>
-                        <a href="#" class="fd-checkout-btn" id="fd-checkout-trigger">Confirm Order</a>
-                    </div>
-                <?php else : ?>
-                    <div style="text-align:center; padding: 40px 0;">
-                        <h3 style="font-weight: 800; color:#d63638;">We are Closed</h3>
-                        <p>Hours: <?php echo $open_time; ?> - <?php echo $close_time; ?></p>
+                
+                <?php if (!$is_open) : ?>
+                    <div class="preorder-badge">
+                        🌙 Currently Closed. <br>Taking Pre-Orders only.
                     </div>
                 <?php endif; ?>
+
+                <div class="fd-order-type">
+                    <input type="radio" name="order_type" id="delivery" value="delivery" checked>
+                    <label for="delivery" class="fd-type-label">Delivery</label>
+                    <input type="radio" name="order_type" id="pickup" value="pickup">
+                    <label for="pickup" class="fd-type-label">Pickup</label>
+                </div>
+
+                <div class="fd-schedule-wrap">
+                    <label>Requested Time</label>
+                    <select id="fd-scheduled-time" class="fd-schedule-select">
+                        <option value="asap"><?php echo $is_open ? 'ASAP (Fastest)' : 'Scheduled (Next Open)'; ?></option>
+                        <option value="12:00">12:00 PM</option>
+                        <option value="13:00">01:00 PM</option>
+                        <option value="14:00">02:00 PM</option>
+                        <option value="17:00">05:00 PM</option>
+                        <option value="18:00">06:00 PM</option>
+                        <option value="19:00">07:00 PM</option>
+                        <option value="20:00">08:00 PM</option>
+                    </select>
+                </div>
+
+                <h4 style="margin:0 0 15px 0; font-weight:800; font-size:20px;">Your Cart</h4>
+                <div id="fd-cart-list"></div>
+
+                <div class="fd-cart-summary-footer" style="border-top: 2px dashed #eee; padding-top: 15px;">
+                    <div id="fd-fee-wrap" style="display:flex; justify-content:space-between; margin-bottom:10px; color:#666;">
+                        <span>Delivery Fee</span>
+                        <span id="fd-display-fee"><?php echo $currency . number_format(floatval($saved_delivery_fee), 2); ?></span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; font-weight:800; font-size: 1.5rem;">
+                        <span>Total</span>
+                        <span style="color:#d63638;"><?php echo $currency; ?><span id="fd-total">0.00</span></span>
+                    </div>
+                    <a href="#" class="fd-checkout-btn" id="fd-checkout-trigger">Confirm Order</a>
+                </div>
             </div>
         </div>
     </div>
@@ -367,8 +383,6 @@ function fd_food_items_shortcode() {
 <script>
 jQuery(document).ready(function($){
     let cart = JSON.parse(localStorage.getItem('fd_cart_save')) || [];
-    
-    // UPDATED: JavaScript now uses the dynamic value from PHP
     const deliveryFee = parseFloat("<?php echo $saved_delivery_fee; ?>") || 0;
     const currency = "<?php echo $currency; ?>";
     const isLoggedIn = <?php echo $is_logged_in; ?>;
@@ -416,7 +430,7 @@ jQuery(document).ready(function($){
         localStorage.setItem('fd_cart_save', JSON.stringify(cart));
     }
 
-    // Handlers
+    // Search Logic
     $('#fd-menu-search').on('keyup', function() {
         let val = $(this).val().toLowerCase();
         $('.fd-food-card').each(function() {
@@ -428,6 +442,7 @@ jQuery(document).ready(function($){
         });
     });
 
+    // Add to Cart
     $(document).on('click', '.order-btn', function() {
         const name = $(this).data('name'), price = parseFloat($(this).data('price'));
         const existing = cart.find(i => i.name === name);
@@ -444,9 +459,14 @@ jQuery(document).ready(function($){
     $(document).on('click', '.fd-delete', function() { cart.splice($(this).data('index'), 1); updateCart(); });
     $('input[name="order_type"]').on('change', updateCart);
 
+    // Checkout Trigger
     $(document).on('click', '#fd-checkout-trigger', function(e) {
         e.preventDefault();
         if(cart.length === 0) return;
+        
+        // Save Scheduled Time to LocalStorage so Checkout page can read it
+        localStorage.setItem('fd_scheduled_time', $('#fd-scheduled-time').val());
+        
         window.location.href = !isLoggedIn ? "<?php echo esc_url($login_url); ?>?redirect_to=" + encodeURIComponent(window.location.href) : "<?php echo esc_url( home_url('/checkout') ); ?>";
     });
 

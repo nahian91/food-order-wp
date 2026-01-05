@@ -1,6 +1,6 @@
 <?php
 /**
- * Final View Order - Unified Admin UI (Permanent ID Version)
+ * Final View Order - Unified Admin UI (Updated Status Workflow)
  */
 if (!defined('ABSPATH')) exit;
 
@@ -16,11 +16,7 @@ if (!$order) {
     return;
 }
 
-/**
- * 2. PERMANENT ID LOGIC
- * We now pull the display_id directly from the column.
- * Fallback to 'REC-' . ID if the column happens to be empty (for very old orders).
- */
+// 2. PERMANENT ID LOGIC
 $display_id = !empty($order->display_id) ? $order->display_id : 'REC-' . $order->id;
 
 // Map columns for the template
@@ -33,17 +29,22 @@ $afon_total            = $order->total_price;
 $afon_items            = json_decode($order->items_json, true);
 
 // Action URLs
-$edit_url    = admin_url('admin.php?page=awesome_food_delivery&tab=orders&order_id=' . $order_id . '&action=edit');
-$print_url   = admin_url('admin.php?page=awesome_food_delivery&tab=orders&order_id=' . $order_id . '&action=print&type=customer');
-$kitchen_url = admin_url('admin.php?page=awesome_food_delivery&tab=orders&order_id=' . $order_id . '&action=print&type=kitchen');
-$delete_url  = wp_nonce_url(
-    admin_url('admin.php?page=awesome_food_delivery&tab=orders&order_id=' . $order_id . '&action=delete'),
-    'delete_order_' . $order_id
-);
+$base_order_url = admin_url('admin.php?page=awesome_food_delivery&tab=orders&order_id=' . $order_id);
+$edit_url    = $base_order_url . '&action=edit';
+$print_url   = $base_order_url . '&action=print&type=customer';
+$kitchen_url = $base_order_url . '&action=print&type=kitchen';
+$delete_url  = wp_nonce_url($base_order_url . '&action=delete', 'delete_order_' . $order_id);
 ?>
 
 <style>
-    :root { --res-red: #d63638; --res-dark: #1d2327; --res-border: #ccd0d4; --res-bg: #f0f2f5; }
+    :root { 
+        --res-red: #d63638; 
+        --res-dark: #1d2327; 
+        --res-border: #ccd0d4; 
+        --res-kitchen: #eba333; 
+        --res-rider: #2271b1;
+        --res-success: #46b450;
+    }
     .view-order-wrap { margin: 20px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     
     /* Header & Quick Actions */
@@ -69,11 +70,12 @@ $delete_url  = wp_nonce_url(
     .total-label { color: #646970; font-weight: 600; font-size: 14px; margin-right: 15px; }
     .total-amount { color: var(--res-red); font-size: 32px; font-weight: 800; }
 
-    /* Status Pills */
-    .v-status { padding: 6px 15px; border-radius: 30px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
-    .v-status-pending { background: #fff8e5; color: #856404; border: 1px solid #ffeeba; }
-    .v-status-completed { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
-    .v-status-cancelled { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+    /* Updated Workflow Status Pills */
+    .v-status { padding: 6px 15px; border-radius: 30px; font-size: 11px; font-weight: 800; text-transform: uppercase; }
+    .v-status-pending { background: var(--res-red); color: #fff; }
+    .v-status-kitchen { background: var(--res-kitchen); color: #fff; }
+    .v-status-rider { background: var(--res-rider); color: #fff; }
+    .v-status-completed { background: var(--res-success); color: #fff; }
 
     /* Sidebar Utils */
     .info-block { margin-bottom: 20px; }
@@ -83,9 +85,11 @@ $delete_url  = wp_nonce_url(
     /* Buttons */
     .btn-v { text-decoration: none; padding: 10px 18px; border-radius: 8px; font-weight: 700; font-size: 13px; display: inline-flex; align-items: center; gap: 8px; transition: 0.2s; border: 1px solid #ccd0d4; background: #fff; color: #2c3338; }
     .btn-v:hover { background: #f6f7f7; border-color: #a7aaad; }
-    .btn-v-red { background: var(--res-red); color: #fff !important; border: none; }
-    .btn-v-red:hover { background: #b52a2c; opacity: 0.9; }
-    .btn-v-kitchen { background: #f0f6ff; color: #2271b1; border-color: #c2d7ef; }
+    
+    /* Workflow Action Buttons */
+    .btn-v-kitchen { background: var(--res-kitchen); color: #fff !important; border: none; }
+    .btn-v-rider { background: var(--res-rider); color: #fff !important; border: none; }
+    .btn-v-complete { background: var(--res-success); color: #fff !important; border: none; }
 </style>
 
 <div class="view-order-wrap">
@@ -100,10 +104,19 @@ $delete_url  = wp_nonce_url(
         </div>
         
         <div class="action-group">
-            <a href="?page=awesome_food_delivery&tab=orders" class="btn-v"><span class="dashicons dashicons-arrow-left-alt"></span> Back</a>
+            <?php 
+            // DYNAMIC WORKFLOW BUTTON IN VIEW PAGE
+            if ($afon_status === 'pending') : ?>
+                <a href="<?php echo esc_url($base_order_url . '&action=update_status&new_status=kitchen'); ?>" class="btn-v btn-v-kitchen"><span class="dashicons dashicons-carrot"></span> Send to Kitchen</a>
+            <?php elseif ($afon_status === 'kitchen') : ?>
+                <a href="<?php echo esc_url($base_order_url . '&action=update_status&new_status=rider'); ?>" class="btn-v btn-v-rider"><span class="dashicons dashicons-bicycle"></span> Assign Rider</a>
+            <?php elseif ($afon_status === 'rider') : ?>
+                <a href="<?php echo esc_url($base_order_url . '&action=update_status&new_status=completed'); ?>" class="btn-v btn-v-complete"><span class="dashicons dashicons-yes"></span> Mark Delivered</a>
+            <?php endif; ?>
+
+            <a href="?page=awesome_food_delivery&tab=orders" class="btn-v">Back</a>
             <a href="<?php echo esc_url($print_url); ?>" target="_blank" class="btn-v"><span class="dashicons dashicons-printer"></span> Receipt</a>
-            <a href="<?php echo esc_url($kitchen_url); ?>" target="_blank" class="btn-v btn-v-kitchen"><span class="dashicons dashicons-carrot"></span> Kitchen Ticket</a>
-            <a href="<?php echo $edit_url; ?>" class="btn-v btn-v-red">Edit Order</a>
+            <a href="<?php echo $edit_url; ?>" class="btn-v">Edit Order</a>
         </div>
     </div>
 
@@ -113,7 +126,7 @@ $delete_url  = wp_nonce_url(
             <div class="view-card">
                 <div class="view-card-header">
                     <h2>Order Summary (<?php echo ucfirst($order->order_type); ?>)</h2>
-                    <span class="v-status v-status-<?php echo $afon_status; ?>"><?php echo ucfirst($afon_status); ?></span>
+                    <span class="v-status v-status-<?php echo $afon_status; ?>"><?php echo strtoupper($afon_status); ?></span>
                 </div>
                 <div class="view-card-body" style="padding:0;">
                     <table class="view-table">
@@ -146,8 +159,6 @@ $delete_url  = wp_nonce_url(
                     </table>
                 </div>
                 <div class="totals-area">
-                    <div style="margin-bottom: 5px;"><span class="total-label" style="font-size: 12px;">SUBTOTAL: £<?php echo number_format(floatval($order->subtotal), 2); ?></span></div>
-                    <div style="margin-bottom: 10px;"><span class="total-label" style="font-size: 12px;">DELIVERY: £<?php echo number_format(floatval($order->delivery_fee), 2); ?></span></div>
                     <span class="total-label">ORDER TOTAL</span>
                     <span class="total-amount">£<?php echo number_format(floatval($afon_total), 2); ?></span>
                 </div>
@@ -178,11 +189,7 @@ $delete_url  = wp_nonce_url(
                     </div>
                     <div class="info-block">
                         <label>Phone Number</label>
-                        <p style="color:var(--res-red);"><?php echo esc_html($afon_customer_phone ?: 'Not Provided'); ?></p>
-                    </div>
-                    <div class="info-block">
-                        <label>Email Address</label>
-                        <p><?php echo esc_html($order->email ?: 'N/A'); ?></p>
+                        <p style="color:var(--res-red); font-size: 18px;"><?php echo esc_html($afon_customer_phone ?: 'Not Provided'); ?></p>
                     </div>
                     <hr style="border:0; border-top:1px solid #f0f0f1; margin:20px 0;">
                     <div class="info-block">
@@ -197,7 +204,6 @@ $delete_url  = wp_nonce_url(
             <div class="view-card" style="border-color: #f5c2c7;">
                 <div class="view-card-header" style="background: #fff8f8;"><h2>Danger Zone</h2></div>
                 <div class="view-card-body">
-                    <p style="font-size:12px; color:#646970; margin-bottom:15px;">Warning: Deleting this order will remove all historical data and revenue records associated with it.</p>
                     <a href="<?php echo $delete_url; ?>" 
                        class="btn-v" 
                        style="color:#d63638; border-color:#f5c2c7; width:100%; justify-content:center;"

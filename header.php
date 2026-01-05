@@ -11,70 +11,56 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="profile" href="https://gmpg.org/xfn/11">
     <?php wp_head(); ?>
-    <style>
-        /* Header & Cart Styles */
-        .attr-nav-flex { display: flex; align-items: center; list-style: none; margin: 0; padding: 0; }
-        .attr-nav-flex li { margin-left: 20px; position: relative; display: flex; align-items: center; }
-        .attr-nav-flex a { color: #333; font-weight: 600; text-decoration: none; display: flex; align-items: center; gap: 8px; }
-        .cart-icon-wrapper { position: relative; }
-        #header-cart-count { position: absolute; top: -10px; right: -12px; background: #d63638; color: #fff; font-size: 10px; height: 18px; width: 18px; line-height: 18px; text-align: center; border-radius: 50%; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
-        .user-welcome-text { font-size: 13px; color: #666; }
-        @media (max-width: 991px) { .attr-nav-flex { margin-top: 15px; padding-bottom: 10px; border-bottom: 1px solid #eee; } }
-
-        /* Modal Styles */
-        .afd-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.85); z-index: 999999; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
-        .afd-modal-box { background: #fff; width: 95%; max-width: 400px; border-radius: 15px; overflow: hidden; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.4); animation: afdFadeIn 0.3s ease-out forwards; }
-        @keyframes afdFadeIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        .afd-modal-header { background: #ffeded; padding: 25px; border-bottom: 1px solid #fbc4c4; }
-        .closed-icon { width: 50px; height: 50px; background: #f56c6c; color: #fff; font-size: 30px; font-weight: bold; line-height: 50px; border-radius: 50%; margin: 0 auto 15px; }
-        .afd-modal-header h2 { margin: 0; color: #f56c6c; font-size: 22px; }
-        .afd-modal-body { padding: 30px 20px; }
-        .main-msg { font-size: 16px; color: #374151; margin-bottom: 25px; font-weight: 500; line-height: 1.5; }
-        .time-info { background: #f9fafb; border-radius: 12px; border: 1px solid #e5e7eb; padding: 15px; }
-        .time-info span { font-size: 11px; text-transform: uppercase; color: #909399; font-weight: 600; display: block; margin-bottom: 5px; }
-        .time-info p { margin: 0; font-weight: bold; color: #1f2f3d; font-size: 18px; }
-        .off-day-text { color: #d63638 !important; }
-
-        .afd-modal-footer { padding: 20px; background: #fafafa; }
-        .afd-btn-ok { background: #111827; color: #fff; border: none; padding: 14px; border-radius: 10px; cursor: pointer; font-weight: 600; width: 100%; transition: background 0.2s; }
-        .afd-btn-ok:hover { background: #000; }
-    </style>
 </head>
 
 <body <?php body_class(); ?>>
 <?php wp_body_open(); ?>
 
     <?php 
-    if (function_exists('get_afd_restaurant_status')) {
+    // Only execute on the home page
+    if ( is_front_page() && function_exists('get_afd_restaurant_status') ) {
         $store_status = get_afd_restaurant_status(); 
 
         // Show modal if the store is strictly CLOSED
-        if ($store_status['status'] === 'closed') : 
+        if ( isset($store_status['status']) && $store_status['status'] === 'closed' ) : 
             $schedule     = get_option('afd_schedule', []);
             $current_day  = current_datetime()->format('D');
             $day_settings = isset($schedule[$current_day]) ? $schedule[$current_day] : null;
-            $is_off_day   = (!$day_settings || empty($day_settings['enabled']));
+            $is_off_day   = ( ! $day_settings || empty($day_settings['enabled']) );
+            
+            $menu_url = home_url('/menu/'); 
             ?>
             <div id="afd-closed-modal" class="afd-modal-overlay">
                 <div class="afd-modal-box">
                     <div class="afd-modal-header">
-                        <div class="closed-icon">!</div>
-                        <h2>Closed Now</h2>
+                        <div class="closed-icon" style="background: #f59e0b;">🕒</div>
+                        <h2><?php esc_html_e( "We're Currently Closed", 'text-domain' ); ?></h2>
                     </div>
                     <div class="afd-modal-body">
-                        <p class="main-msg"><?php echo nl2br(esc_html($store_status['message'])); ?></p>
+                        <p class="main-msg"><?php echo nl2br( esc_html( $store_status['message'] ) ); ?></p>
+                        
                         <div class="time-info">
                             <?php if ($is_off_day) : ?>
-                                <span>Status</span>
-                                <p class="off-day-text">Today is our Day Off</p>
+                                <span><?php esc_html_e( 'Status', 'text-domain' ); ?></span>
+                                <p class="off-day-text"><?php esc_html_e( 'Today is our Day Off', 'text-domain' ); ?></p>
                             <?php else : ?>
-                                <span>Today's Operating Hours</span>
-                                <p><?php echo esc_html($day_settings['open']); ?> — <?php echo esc_html($day_settings['close']); ?></p>
+                                <span><?php esc_html_e( "Today's Operating Hours", 'text-domain' ); ?></span>
+                                <p><?php echo esc_html( $day_settings['open'] ); ?> — <?php echo esc_html( $day_settings['close'] ); ?></p>
                             <?php endif; ?>
                         </div>
+                        
+                        <p style="font-size: 13px; color: #64748b; margin-top: 15px;">
+                            <?php echo wp_kses_post( __( 'You can still place a <strong>Pre-Order</strong> for our next opening time!', 'text-domain' ) ); ?>
+                        </p>
                     </div>
-                    <div class="afd-modal-footer">
-                        <button onclick="document.getElementById('afd-closed-modal').remove()" class="afd-btn-ok">Understood</button>
+                    <div class="afd-modal-footer" style="display: flex; gap: 10px;">
+                        <button onclick="document.getElementById('afd-closed-modal').remove()" class="afd-btn-close" style="background: #e2e8f0; color: #475569; border: none; padding: 10px 15px; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                            <?php esc_html_e( 'Close', 'text-domain' ); ?>
+                        </button>
+                        
+                        <a href="<?php echo esc_url( $menu_url ); ?>" class="afd-btn-preorder" style="background: #ef4444; color: #fff; text-decoration: none; padding: 10px 20px; border-radius: 8px; font-weight: 700; flex-grow: 1; text-align: center;">
+                            <?php esc_html_e( 'Pre-Order Now', 'text-domain' ); ?>
+                        </a>
                     </div>
                 </div>
             </div>

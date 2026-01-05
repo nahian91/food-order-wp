@@ -15,7 +15,7 @@ if ( ! function_exists( 'get_afd_restaurant_status' ) ) {
         $current_time = $now->format('H:i');
         $current_ts   = strtotime($current_time);
 
-        if (empty($schedule[$current_day]) || !isset($schedule[$current_day]['enabled'])) {
+        if (empty($schedule[$current_day]) || !isset($schedule[$current_day]['enabled']) || !$schedule[$current_day]['enabled']) {
             return ['is_open' => false, 'status' => 'closed', 'message' => $closed_msg];
         }
 
@@ -50,6 +50,7 @@ function fd_settings_tab() {
         update_option('afd_status_message', sanitize_textarea_field($_POST['afd_status_message']));
         update_option('afd_warning_message', sanitize_textarea_field($_POST['afd_warning_message']));
         update_option('afd_delivery_charge', sanitize_text_field($_POST['afd_delivery_charge']));
+        update_option('afd_cooking_time', sanitize_text_field($_POST['afd_cooking_time'])); // NEW FIELD
         
         $new_schedule = [];
         $days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -72,6 +73,7 @@ function fd_settings_tab() {
     $message         = get_option('afd_status_message', 'Sorry, we are currently closed!');
     $warning_msg     = get_option('afd_warning_message', 'Hurry! We are closing in %min% minutes.');
     $delivery_charge = get_option('afd_delivery_charge', '0.00');
+    $cooking_time    = get_option('afd_cooking_time', '20-30'); // NEW FIELD
     $status_info     = get_afd_restaurant_status();
     $days_of_week    = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -145,13 +147,21 @@ function fd_settings_tab() {
                     <div class="afd-card mini-card">
                         <div class="card-title">
                             <span class="dashicons dashicons-money-alt"></span>
-                            <h2>Financials</h2>
+                            <h2>Financials & Estimations</h2>
                         </div>
                         <div class="input-field">
                             <label>Delivery Charge (£)</label>
                             <div class="currency-input">
                                 <span class="currency-symbol">£</span>
                                 <input type="text" name="afd_delivery_charge" value="<?php echo esc_attr($delivery_charge); ?>" placeholder="0.00">
+                            </div>
+                        </div>
+
+                        <div class="input-field" style="margin-top: 15px;">
+                            <label>Cooking Time (Mins)</label>
+                            <div class="currency-input">
+                                <span class="currency-symbol"><span class="dashicons dashicons-performance" style="font-size:15px; margin-top:2px;"></span></span>
+                                <input type="text" name="afd_cooking_time" value="<?php echo esc_attr($cooking_time); ?>" placeholder="e.g. 20-30">
                             </div>
                         </div>
                     </div>
@@ -181,7 +191,6 @@ function fd_settings_tab() {
     </div>
 
     <style>
-        /* Existing Styles ... */
         .afd-wrapper { max-width: 1000px; margin: 20px 0; font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; color: #1e293b; }
         
         .afd-smart-preview {

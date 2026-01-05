@@ -25,11 +25,10 @@ if (isset($_POST['fd_place_order'])) {
     global $wpdb;
     $table_name = $wpdb->prefix . 'afd_food_orders';
 
-    // --- STEP A: GENERATE PERMANENT SEQUENTIAL ID ---
+    // --- STEP A: GENERATE PERMANENT SEQUENTIAL ID (Existing Feature) ---
     $today_date = current_time('Y-m-d');
     $date_prefix = current_time('Ymd');
     
-    // Count how many orders were placed today to find the next number
     $count_today = $wpdb->get_var($wpdb->prepare(
         "SELECT COUNT(id) FROM $table_name WHERE DATE(order_date) = %s",
         $today_date
@@ -38,11 +37,16 @@ if (isset($_POST['fd_place_order'])) {
     $new_sequence = intval($count_today) + 1;
     $permanent_id = $date_prefix . '-' . str_pad($new_sequence, 4, '0', STR_PAD_LEFT);
 
-    // --- STEP B: DATABASE INSERTION ---
+    // --- STEP B: PRE-ORDER LOGIC (New Feature) ---
+    $scheduled_time = isset($data['scheduledTime']) ? sanitize_text_field($data['scheduledTime']) : 'asap';
+    // If time is not "asap", set status to "preorder"
+    $initial_status = ($scheduled_time === 'asap') ? 'pending' : 'preorder';
+
+    // --- STEP C: DATABASE INSERTION (All Features) ---
     $inserted = $wpdb->insert(
         $table_name,
         [
-            'display_id'    => $permanent_id, // Saved permanently
+            'display_id'    => $permanent_id, 
             'customer_id'   => $user_id,
             'order_type'    => sanitize_text_field($data['orderType']),
             'full_name'     => sanitize_text_field($data['fullName']),
@@ -50,18 +54,19 @@ if (isset($_POST['fd_place_order'])) {
             'phone'         => sanitize_text_field($data['phone']),
             'address'       => sanitize_textarea_field($data['address']),
             'notes'         => sanitize_textarea_field($data['notes']),
+            'scheduled_time'=> $scheduled_time, // New Feature
             'items_json'    => json_encode($data['cart']), 
             'subtotal'      => floatval($data['subtotal']),
             'delivery_fee'  => floatval($data['delivery']),
             'total_price'   => floatval($data['total']),
-            'order_status'  => 'pending',
+            'order_status'  => $initial_status, // Dynamic Status
             'order_date'    => current_time('mysql')
         ],
-        ['%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%f', '%f', '%f', '%s', '%s']
+        ['%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%f', '%f', '%f', '%s', '%s']
     );
 
     if ($inserted) {
-        // Update user meta for convenience in future orders
+        // Update user meta for convenience (Existing Feature)
         if ($user_id > 0) {
             update_user_meta($user_id, 'phone', sanitize_text_field($data['phone']));
             if ($data['orderType'] === 'delivery') {
@@ -69,10 +74,9 @@ if (isset($_POST['fd_place_order'])) {
             }
         }
         
-        // Return success and the ID to the frontend
         echo json_encode([
             'status' => 'success', 
-            'order_id' => $permanent_id // Pass the permanent ID for the redirect
+            'order_id' => $permanent_id 
         ]);
     } else {
         echo json_encode(['status' => 'error', 'message' => 'DB Error: ' . $wpdb->last_error]);
@@ -82,7 +86,7 @@ if (isset($_POST['fd_place_order'])) {
 
 get_header();
 
-// PRE-FILL LOGIC
+// PRE-FILL LOGIC (Existing Feature)
 $u = wp_get_current_user();
 $user_id = $u->ID;
 $user_phone = get_user_meta($user_id, 'phone', true);
@@ -104,6 +108,9 @@ $base_delivery_fee = get_option('afd_delivery_charge', '0.00');
     .fulfillment-toggle input { display: none; }
     .fulfillment-toggle label { flex: 1; text-align: center; padding: 12px; border-radius: 12px; cursor: pointer; font-weight: 800; transition: 0.3s; color: #666; margin: 0; }
     .fulfillment-toggle input:checked + label { background: var(--primary-red); color: #fff; box-shadow: 0 4px 10px rgba(214, 54, 56, 0.2); }
+
+    /* New Feature Style */
+    .schedule-badge { background: #fff8e1; border: 1px solid #ffe082; color: #795548; padding: 10px 15px; border-radius: 12px; font-size: 13px; font-weight: 700; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
 
     .summary-item { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 0.95rem; }
     .place-order-btn { background: var(--primary-red); color: #fff; border: none; width: 100%; padding: 18px; border-radius: 15px; font-weight: 800; font-size: 1.1rem; transition: 0.3s; margin-top: 20px; }
@@ -155,6 +162,12 @@ $base_delivery_fee = get_option('afd_delivery_charge', '0.00');
             <div class="col-lg-5">
                 <div class="checkout-card sticky-top" style="top: 100px;">
                     <h4 class="fw-bold mb-4">Order Summary</h4>
+                    
+                    <div id="scheduleInfo" class="schedule-badge" style="display:none;">
+                        <span class="dashicons dashicons-clock"></span>
+                        <span>Scheduled for: <span id="timeValDisplay">ASAP</span></span>
+                    </div>
+
                     <div id="itemsContainer" class="mb-4"></div>
 
                     <div class="border-top pt-3">
@@ -183,6 +196,7 @@ $base_delivery_fee = get_option('afd_delivery_charge', '0.00');
 <script>
 document.addEventListener('DOMContentLoaded', function(){
     let cart = JSON.parse(localStorage.getItem('fd_cart_save')) || [];
+    let scheduledTime = localStorage.getItem('fd_scheduled_time') || 'asap';
     const deliveryFee = parseFloat("<?php echo $base_delivery_fee; ?>") || 0;
     const currency = "<?php echo $currency; ?>";
 
@@ -192,6 +206,12 @@ document.addEventListener('DOMContentLoaded', function(){
         const deliveryRow = document.getElementById('deliveryRow');
         const container = document.getElementById('itemsContainer');
         
+        // Handle Scheduled Display
+        if(scheduledTime !== 'asap') {
+            document.getElementById('scheduleInfo').style.display = 'flex';
+            document.getElementById('timeValDisplay').innerText = scheduledTime;
+        }
+
         addressArea.style.display = isPickup ? 'none' : 'block';
         deliveryRow.style.display = isPickup ? 'none' : 'flex';
 
@@ -234,6 +254,7 @@ document.addEventListener('DOMContentLoaded', function(){
             phone: document.getElementById('phone').value.trim(),
             address: orderType === 'delivery' ? document.getElementById('address').value.trim() : 'STORE PICKUP',
             notes: document.getElementById('notes').value.trim(),
+            scheduledTime: scheduledTime, // Send New Feature Data
             cart: cart,
             subtotal: document.getElementById('subtotalVal').innerText,
             delivery: document.getElementById('deliveryVal').innerText,
@@ -257,7 +278,7 @@ document.addEventListener('DOMContentLoaded', function(){
         .then(res => {
             if(res.status === 'success') {
                 localStorage.removeItem('fd_cart_save');
-                // Redirect to thanks page with the permanent ID in the URL
+                localStorage.removeItem('fd_scheduled_time'); // Clear the schedule storage
                 window.location.href = '<?php echo home_url('/thanks/?order_id='); ?>' + res.order_id;
             } else {
                 alert(res.message);

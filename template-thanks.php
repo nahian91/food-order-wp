@@ -7,18 +7,29 @@ get_header();
 
 global $wpdb;
 $table_name = $wpdb->prefix . 'afd_food_orders';
-$user_id = get_current_user_id();
 
 /**
- * 1. FETCH THE LATEST ORDER
+ * 1. FETCH THE SPECIFIC ORDER
+ * We check if an order_id is passed in the URL (sent from Checkout redirect)
+ * If not, we fall back to the latest order for the user.
  */
-if ($user_id > 0) {
+$url_order_id = isset($_GET['order_id']) ? sanitize_text_field($_GET['order_id']) : '';
+
+if (!empty($url_order_id)) {
     $order = $wpdb->get_row($wpdb->prepare(
-        "SELECT * FROM $table_name WHERE customer_id = %d ORDER BY order_date DESC LIMIT 1",
-        $user_id
+        "SELECT * FROM $table_name WHERE display_id = %s",
+        $url_order_id
     ));
 } else {
-    $order = $wpdb->get_row("SELECT * FROM $table_name ORDER BY order_date DESC LIMIT 1");
+    $user_id = get_current_user_id();
+    if ($user_id > 0) {
+        $order = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM $table_name WHERE customer_id = %d ORDER BY order_date DESC LIMIT 1",
+            $user_id
+        ));
+    } else {
+        $order = $wpdb->get_row("SELECT * FROM $table_name ORDER BY order_date DESC LIMIT 1");
+    }
 }
 
 $currency = '£';
@@ -34,6 +45,7 @@ $currency = '£';
     .receipt-table th { border: none; color: #888; font-weight: 600; text-transform: uppercase; font-size: 11px; padding-bottom: 15px; }
     .receipt-table td { vertical-align: middle; padding: 12px 0; border-top: 1px solid #f8f9fa; }
     .instruction-box { margin-top: 25px; padding: 20px; background: #fff9f9; border-radius: 12px; border-left: 4px solid var(--primary-red); }
+    .schedule-box { background: #fffbeb; border: 1px solid #fef3c7; border-radius: 12px; padding: 15px; margin-bottom: 25px; display: flex; align-items: center; gap: 15px; }
     .btn-home { background: var(--primary-red); color: white !important; border-radius: 12px; font-weight: 700; padding: 15px 40px; text-decoration: none; display: inline-block; transition: 0.3s; border: none; }
     .btn-home:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(214, 54, 56, 0.3); opacity: 0.9; }
 </style>
@@ -49,26 +61,9 @@ $currency = '£';
         <div class="col-lg-8">
             
             <?php if ($order) : 
-                /**
-                 * 2. GENERATE TRULY UNIQUE SEQUENTIAL ID
-                 * Logic: Calculate position based on the number of items 
-                 * created on that specific day PRIOR to this specific ID.
-                 */
-                $order_date_raw = strtotime($order->order_date);
-                $date_prefix = date('Ymd', $order_date_raw);
-                $order_date_only = date('Y-m-d', $order_date_raw);
-
-                // Count how many orders existed on that day BEFORE or AT this order ID
-                $sequence_num = $wpdb->get_var($wpdb->prepare(
-                    "SELECT COUNT(id) FROM $table_name WHERE DATE(order_date) = %s AND id <= %d",
-                    $order_date_only,
-                    $order->id
-                ));
-
-                $display_id = $date_prefix . '-' . str_pad($sequence_num, 4, '0', STR_PAD_LEFT);
-
-                // Decode the JSON cart items
+                $display_id = $order->display_id;
                 $items = json_decode($order->items_json, true);
+                $is_preorder = ($order->order_status === 'preorder');
             ?>
 
             <div class="card success-card">
@@ -80,24 +75,37 @@ $currency = '£';
                 </div>
 
                 <div class="card-body p-4 p-md-5">
+                    
+                    <div class="schedule-box">
+                        <div style="font-size: 24px;">⏰</div>
+                        <div>
+                            <div class="detail-label" style="margin:0">Requested Time</div>
+                            <div class="fw-bold text-dark" style="font-size: 1.1rem;">
+                                <?php echo ($order->scheduled_time === 'asap') ? 'As Soon As Possible' : esc_html($order->scheduled_time); ?>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="row mb-4">
                         <div class="col-md-6">
                             <div class="detail-label">Service Type</div>
                             <div class="detail-value text-capitalize"><?php echo esc_html($order->order_type); ?></div>
 
-                            <div class="detail-label">Delivery Address</div>
+                            <div class="detail-label">Fulfillment Address</div>
                             <div class="detail-value"><?php echo $order->address ? nl2br(esc_html($order->address)) : 'In-store Collection'; ?></div>
                             
                             <div class="detail-label">Contact Phone</div>
                             <div class="detail-value"><?php echo esc_html($order->phone); ?></div>
                         </div>
                         <div class="col-md-6 text-md-end">
-                            <div class="detail-label">Order Date</div>
+                            <div class="detail-label">Order Placed</div>
                             <div class="detail-value"><?php echo date('F j, Y g:i a', strtotime($order->order_date)); ?></div>
                             
-                            <div class="detail-label">Status</div>
-                            <div class="detail-value text-danger" style="text-transform: capitalize;">
-                                <?php echo esc_html($order->order_status); ?>
+                            <div class="detail-label">Current Status</div>
+                            <div class="detail-value">
+                                <span class="badge <?php echo $is_preorder ? 'bg-warning text-dark' : 'bg-danger text-white'; ?>" style="padding: 8px 12px; border-radius: 8px; text-transform: uppercase;">
+                                    <?php echo esc_html($order->order_status); ?>
+                                </span>
                             </div>
                         </div>
                     </div>
@@ -177,8 +185,10 @@ $currency = '£';
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        // Full Cleanup
         localStorage.removeItem('fd_cart_save');
         localStorage.removeItem('fd_order_type_save');
+        localStorage.removeItem('fd_scheduled_time');
     });
 </script>
 
