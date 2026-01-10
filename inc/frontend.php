@@ -196,15 +196,18 @@ add_shortcode('food_categories', 'fd_dynamic_category_carousel_shortcode');
 
 /**
  * SHORTCODE: Main Food Ordering System (Menu + Cart)
- * Features: Pre-Order Mode & Scheduled Time Selection
+ * Features: Live Status Integration, Pre-Order Mode, & Dynamic Scheduling
  */
 function fd_food_items_shortcode() {
     wp_enqueue_style('dashicons');
 
-    // 1. SETTINGS & DYNAMIC DATA
+    // 1. SETTINGS & LIVE STATUS
     $store_status = function_exists('get_afd_restaurant_status') ? get_afd_restaurant_status() : ['status' => 'open', 'is_open' => true];
-    $is_open      = ($store_status['status'] === 'open');
-    $currency     = '£';
+    
+    // Check if truly open (Open or Warning status)
+    $is_actually_open = ($store_status['status'] === 'open' || $store_status['status'] === 'warning');
+    
+    $currency = '£';
     $saved_delivery_fee = get_option('afd_delivery_charge', '0.00');
 
     // 2. FETCH DATA
@@ -243,6 +246,7 @@ function fd_food_items_shortcode() {
     ob_start(); ?>
 
 <style>
+    /* YOUR ORIGINAL CSS REMAINS THE SAME */
     .fd-main-wrapper { max-width: 1200px; margin: 0 auto; padding: 40px 20px; font-family: 'Inter', sans-serif; background: #fcfcfc; }
     .fd-search-container { margin-bottom: 40px; position: relative; }
     .fd-menu-search { width: 100%; padding: 18px 25px 18px 55px; border-radius: 15px; border: 1px solid #ddd; font-size: 16px; box-shadow: 0 5px 15px rgba(0,0,0,0.05); outline: none; transition: 0.3s; }
@@ -277,13 +281,10 @@ function fd_food_items_shortcode() {
     .fd-cart-item { border-bottom: 1px solid #f8f8f8; padding: 15px 0; }
     .fd-checkout-btn { display: block; text-align: center; background:#d63638; color:#fff !important; padding:18px; border-radius:15px; margin-top:10px; font-weight:800; text-decoration: none !important; box-shadow: 0 10px 20px rgba(214, 54, 56, 0.2); }
     .order-btn { margin-top: 15px; padding: 12px 30px; background: #d63638; color: #fff; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; }
-    
-    /* PRE-ORDER UI */
     .fd-schedule-wrap { margin-bottom: 20px; }
     .fd-schedule-wrap label { display: block; font-size: 12px; font-weight: 800; text-transform: uppercase; color: #666; margin-bottom: 8px; }
     .fd-schedule-select { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #ddd; background: #f9f9f9; font-weight: 600; outline: none; }
-    .preorder-badge { background: #fef2f2; border: 1px solid #fee2e2; color: #d63638; padding: 10px; border-radius: 10px; font-size: 13px; font-weight: 700; margin-bottom: 20px; text-align: center; }
-
+    .preorder-badge { background: #fffbeb; border: 1px solid #fef3c7; color: #92400e; padding: 12px; border-radius: 12px; font-size: 13px; font-weight: 700; margin-bottom: 20px; text-align: center; line-height: 1.4; }
     @media (max-width: 991px) { .fd-cart-sidebar { width: 100%; order: -1; } .fd-sticky-panel { position: static; max-height: none; } }
 </style>
 
@@ -334,9 +335,11 @@ function fd_food_items_shortcode() {
         <div class="fd-cart-sidebar">
             <div class="fd-sticky-panel">
                 
-                <?php if (!$is_open) : ?>
+                <?php if (!$is_actually_open) : ?>
                     <div class="preorder-badge">
-                        🌙 Currently Closed. <br>Taking Pre-Orders only.
+                        <span class="dashicons dashicons-clock" style="font-size:18px; margin-bottom:4px;"></span><br>
+                        <strong>We are currently closed.</strong><br>
+                        Accepting Pre-Orders for next opening.
                     </div>
                 <?php endif; ?>
 
@@ -350,7 +353,11 @@ function fd_food_items_shortcode() {
                 <div class="fd-schedule-wrap">
                     <label>Requested Time</label>
                     <select id="fd-scheduled-time" class="fd-schedule-select">
-                        <option value="asap"><?php echo $is_open ? 'ASAP (Fastest)' : 'Scheduled (Next Open)'; ?></option>
+                        <?php if ($is_actually_open) : ?>
+                            <option value="asap">ASAP (Fastest Delivery)</option>
+                        <?php else : ?>
+                            <option value="" disabled selected>Select Pre-Order Time</option>
+                        <?php endif; ?>
                         <option value="12:00">12:00 PM</option>
                         <option value="13:00">01:00 PM</option>
                         <option value="14:00">02:00 PM</option>
@@ -358,6 +365,7 @@ function fd_food_items_shortcode() {
                         <option value="18:00">06:00 PM</option>
                         <option value="19:00">07:00 PM</option>
                         <option value="20:00">08:00 PM</option>
+                        <option value="21:00">09:00 PM</option>
                     </select>
                 </div>
 
@@ -373,7 +381,9 @@ function fd_food_items_shortcode() {
                         <span>Total</span>
                         <span style="color:#d63638;"><?php echo $currency; ?><span id="fd-total">0.00</span></span>
                     </div>
-                    <a href="#" class="fd-checkout-btn" id="fd-checkout-trigger">Confirm Order</a>
+                    <a href="#" class="fd-checkout-btn" id="fd-checkout-trigger">
+                        <?php echo $is_actually_open ? 'Confirm Order' : 'Place Pre-Order'; ?>
+                    </a>
                 </div>
             </div>
         </div>
@@ -386,6 +396,7 @@ jQuery(document).ready(function($){
     const deliveryFee = parseFloat("<?php echo $saved_delivery_fee; ?>") || 0;
     const currency = "<?php echo $currency; ?>";
     const isLoggedIn = <?php echo $is_logged_in; ?>;
+    const isActuallyOpen = <?php echo $is_actually_open ? 'true' : 'false'; ?>;
 
     function updateCart() {
         const container = $('#fd-cart-list');
@@ -462,11 +473,23 @@ jQuery(document).ready(function($){
     // Checkout Trigger
     $(document).on('click', '#fd-checkout-trigger', function(e) {
         e.preventDefault();
+        
+        // 1. Check if Cart is empty
         if(cart.length === 0) return;
+
+        // 2. Check if Time is selected (Required for Pre-Order)
+        const selectedTime = $('#fd-scheduled-time').val();
+        if(!isActuallyOpen && !selectedTime) {
+            alert('Please select a requested time for your pre-order.');
+            $('#fd-scheduled-time').css('border-color', 'red').focus();
+            return;
+        }
         
-        // Save Scheduled Time to LocalStorage so Checkout page can read it
-        localStorage.setItem('fd_scheduled_time', $('#fd-scheduled-time').val());
+        // 3. Save details for Checkout page
+        localStorage.setItem('fd_scheduled_time', selectedTime);
+        localStorage.setItem('fd_order_mode', isActuallyOpen ? 'Live' : 'Pre-Order');
         
+        // 4. Redirect to login or checkout
         window.location.href = !isLoggedIn ? "<?php echo esc_url($login_url); ?>?redirect_to=" + encodeURIComponent(window.location.href) : "<?php echo esc_url( home_url('/checkout') ); ?>";
     });
 

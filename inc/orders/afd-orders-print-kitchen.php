@@ -80,13 +80,6 @@ if (isset($_GET['action']) && $_GET['action'] === 'print' && $_GET['type'] === '
             <?php endforeach; endif; ?>
         </table>
 
-        <?php if(!empty($order->notes)) : ?>
-            <div class="notes-box">
-                🚨 INSTRUCTIONS:<br>
-                <?php echo strtoupper(nl2br(esc_html($order->notes))); ?>
-            </div>
-        <?php endif; ?>
-
         <div class="footer">
             KITCHEN COPY - ORDER #<?php echo esc_html($display_id); ?><br>
             *** THANK YOU ***

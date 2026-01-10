@@ -1,106 +1,115 @@
 <?php
+/**
+ * Edit Order - Final Version
+ * Features: DB Auto-Sync, Live Calculations, Minute-Based Kitchen Timer Sync
+ */
+
 if (!defined('ABSPATH')) exit;
 
-/**
- * Edit Order - Unified Admin UI (Premium Modern Version)
- */
 global $wpdb;
 $table_name = $wpdb->prefix . 'afd_food_orders';
 $afon_order_id = isset($_GET['order_id']) ? intval($_GET['order_id']) : 0;
 
 if (!$afon_order_id) {
-    echo '<div class="notice notice-error"><p>Invalid Order Resource.</p></div>';
+    echo '<div class="notice notice-error"><p>Invalid Order Reference.</p></div>';
     return;
 }
 
-// 1. UPDATE LOGIC
+/*--------------------------------------------------------------
+# 1. DATABASE AUTO-REPAIR
+--------------------------------------------------------------*/
+$column_check = $wpdb->get_results("SHOW COLUMNS FROM `$table_name` LIKE 'delay_message'");
+if (empty($column_check)) {
+    $wpdb->query("ALTER TABLE `$table_name` ADD `delay_message` TEXT NOT NULL AFTER `scheduled_time`;");
+}
+
+/*--------------------------------------------------------------
+# 2. SAVE LOGIC (With Minute-to-Timer Sync)
+--------------------------------------------------------------*/
 if (isset($_POST['afon_update_order'])) {
     check_admin_referer('afon_update_order_action', 'afon_update_order_nonce');
 
+    // Process Order Items
     $afon_updated_items = [];
     if (isset($_POST['afon_items_name']) && is_array($_POST['afon_items_name'])) {
-        foreach ($_POST['afon_items_name'] as $afon_index => $afon_name) {
-            if (!empty($afon_name)) {
+        foreach ($_POST['afon_items_name'] as $idx => $name) {
+            if (!empty($name)) {
                 $afon_updated_items[] = [
-                    'name'  => sanitize_text_field($afon_name),
-                    'qty'   => intval($_POST['afon_items_qty'][$afon_index]),
-                    'price' => floatval($_POST['afon_items_price'][$afon_index]) 
+                    'name'  => sanitize_text_field($name),
+                    'qty'   => intval($_POST['afon_items_qty'][$idx]),
+                    'price' => floatval($_POST['afon_items_price'][$idx]) 
                 ];
             }
         }
     }
 
+    // TIMER CALCULATION: Convert "Minutes" input into a DB timestamp
+    $mins_input = intval($_POST['afon_scheduled_time']);
+    $prep_time_setting = intval(get_option('afd_cooking_time', 20)); // Get global cooking time setting
+    
+    // Logic: Reset order_date anchor so that (order_date + prep_time) = (now + input_mins)
+    $new_anchor_ts = current_time('timestamp') + (($mins_input - $prep_time_setting) * 60);
+    $new_order_date = date('Y-m-d H:i:s', $new_anchor_ts);
+
+    // Update Database
     $update_data = [
-        'full_name'    => sanitize_text_field($_POST['afon_customer_name']),
-        'phone'        => sanitize_text_field($_POST['afon_customer_phone']),
-        'address'      => sanitize_textarea_field($_POST['afon_customer_address']),
-        'notes'        => sanitize_textarea_field($_POST['afon_notes']),
-        'order_status' => sanitize_text_field($_POST['afon_status']),
-        'items_json'   => json_encode($afon_updated_items),
-        'total_price'  => floatval($_POST['afon_total_price'])
+        'notes'          => sanitize_textarea_field($_POST['afon_notes']),
+        'delay_message'  => sanitize_textarea_field($_POST['afon_delay_message']), 
+        'order_status'   => sanitize_text_field($_POST['afon_status']),
+        'items_json'     => json_encode($afon_updated_items),
+        'total_price'    => floatval($_POST['afon_total_price']),
+        'scheduled_time' => $mins_input, // Save as raw number for countdown logic
+        'order_date'     => $new_order_date, // This updates the actual countdown timer
     ];
 
-    $wpdb->update($table_name, $update_data, ['id' => $afon_order_id]);
-    echo '<div class="updated notice is-dismissible"><p>Order updated successfully.</p></div>';
+    $result = $wpdb->update($table_name, $update_data, ['id' => $afon_order_id]);
+
+    if ($result !== false) {
+        echo '<div class="updated notice is-dismissible"><p>Order Updated. Timer reset to ' . $mins_input . ' minutes.</p></div>';
+    }
 }
 
-// 2. DATA RETRIEVAL
+/*--------------------------------------------------------------
+# 3. DATA RETRIEVAL
+--------------------------------------------------------------*/
 $order = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $afon_order_id));
-if (!$order) { return; }
+if (!$order) { echo "Order not found."; return; }
+
 $afon_items = json_decode($order->items_json, true) ?: [];
 $display_id = !empty($order->display_id) ? $order->display_id : $order->id;
 ?>
 
 <style>
-    :root { 
-        --clr-primary: #ef4444; 
-        --clr-dark: #1e293b; 
-        --clr-border: #e2e8f0; 
-        --clr-bg: #f8fafc; 
-    }
-    .view-order-wrap { margin: 20px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: var(--clr-dark); }
-    
-    /* Header Styles */
+    :root { --clr-primary: #ef4444; --clr-dark: #1e293b; --clr-border: #e2e8f0; }
+    .view-order-wrap { margin: 20px; font-family: sans-serif; color: var(--clr-dark); }
     .view-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
     .id-badge { background: #fff; border: 1px solid var(--clr-border); padding: 12px 20px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
-    
-    /* Grid Layout */
     .view-grid { display: grid; grid-template-columns: 1fr 380px; gap: 25px; }
-    .view-card { background: #fff; border: 1px solid var(--clr-border); border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05); margin-bottom: 25px; }
-    .view-card-header { padding: 18px 25px; border-bottom: 1px solid var(--clr-border); background: #fcfcfd; }
-    .view-card-header h2 { margin: 0; font-size: 14px; font-weight: 800; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px; }
+    .view-card { background: #fff; border: 1px solid var(--clr-border); border-radius: 12px; overflow: hidden; margin-bottom: 25px; }
+    .view-card-header { padding: 15px 25px; border-bottom: 1px solid var(--clr-border); background: #fcfcfd; }
+    .view-card-header h2 { margin: 0; font-size: 13px; font-weight: 800; text-transform: uppercase; color: #64748b; }
     .view-card-body { padding: 25px; }
-
-    /* Form Inputs */
-    .edit-input { width: 100%; border: 1px solid var(--clr-border); border-radius: 8px; padding: 10px 12px; font-size: 14px; transition: 0.2s; }
-    .edit-input:focus { border-color: var(--clr-primary); outline: none; box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1); }
-    
-    /* Table */
+    .edit-input { width: 100%; border: 1px solid var(--clr-border); border-radius: 8px; padding: 10px 12px; box-sizing: border-box; }
     .view-table { width: 100%; border-collapse: collapse; }
-    .view-table th { text-align: left; padding: 12px 15px; background: #f8fafc; color: #64748b; font-size: 11px; text-transform: uppercase; border-bottom: 1px solid var(--clr-border); }
+    .view-table th { text-align: left; padding: 12px 15px; background: #f8fafc; font-size: 11px; text-transform: uppercase; border-bottom: 1px solid var(--clr-border); }
     .view-table td { padding: 12px 15px; border-bottom: 1px solid #f1f5f9; }
-
-    /* Buttons */
-    .btn-v { text-decoration: none; padding: 10px 18px; border-radius: 10px; font-weight: 700; font-size: 13px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; border: 1px solid var(--clr-border); background: #fff; transition: 0.2s; }
-    .btn-v:hover { background: #f8fafc; transform: translateY(-1px); }
+    .btn-v { text-decoration: none; padding: 10px 18px; border-radius: 10px; font-weight: 700; font-size: 13px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; border: 1px solid var(--clr-border); background: #fff; }
     .btn-save { background: var(--clr-primary); color: #fff !important; border: none; width: 100%; justify-content: center; height: 45px; margin-top: 10px; }
-    .btn-save:hover { background: #dc2626; box-shadow: 0 10px 15px -3px rgba(239, 68, 68, 0.3); }
-
-    .total-amount-display { font-size: 32px; font-weight: 900; color: var(--clr-primary); text-align: right; border: none; width: 100%; outline: none; background: transparent; }
+    .total-amount-display { font-size: 32px; font-weight: 900; color: var(--clr-primary); text-align: right; border: none; width: 100%; background: transparent; }
+    label.field-label { font-size: 11px; font-weight: 800; color: #64748b; display: block; margin-bottom: 5px; text-transform: uppercase; }
 </style>
 
 <div class="view-order-wrap">
     <form method="post">
         <?php wp_nonce_field('afon_update_order_action', 'afon_update_order_nonce'); ?>
-        
         <div class="view-header">
             <div class="id-badge">
-                <span style="font-size:12px; font-weight:700; color:#94a3b8; display:block; margin-bottom:2px;">EDITING ORDER</span>
+                <span style="font-size:11px; font-weight:700; color:#94a3b8; display:block;">EDIT ORDER</span>
                 <span style="font-size:24px; font-weight:900; color:var(--clr-primary);">#<?php echo esc_html($display_id); ?></span>
             </div>
             <div style="display:flex; gap:10px;">
-                <a href="?page=awesome_food_delivery&tab=orders" class="btn-v"><span class="dashicons dashicons-arrow-left-alt"></span> Back to List</a>
-                <button type="button" id="add-new-item" class="btn-v" style="color: #3b82f6;"><span class="dashicons dashicons-plus-alt2"></span> Add Item</button>
+                <a href="?page=awesome_food_delivery&tab=orders" class="btn-v">Back</a>
+                <button type="button" id="add-new-item" class="btn-v" style="color: #3b82f6;">+ Add Item</button>
             </div>
         </div>
 
@@ -132,55 +141,56 @@ $display_id = !empty($order->display_id) ? $order->display_id : $order->id;
                             </tbody>
                         </table>
                         <div style="padding: 25px; background: #fafafa; text-align: right; border-top: 1px solid var(--clr-border);">
-                            <div style="font-size:12px; font-weight:800; color:#64748b; margin-bottom:5px;">GRAND TOTAL</div>
+                            <label class="field-label">Grand Total</label>
                             <input type="number" step="0.01" name="afon_total_price" id="final-total" class="total-amount-display" value="<?php echo number_format(floatval($order->total_price), 2, '.', ''); ?>" readonly>
                         </div>
                     </div>
                 </div>
 
                 <div class="view-card">
-                    <div class="view-card-header"><h2>Chef Notes / Instructions</h2></div>
+                    <div class="view-card-header"><h2>Internal Kitchen Notes</h2></div>
                     <div class="view-card-body">
-                        <textarea name="afon_notes" class="edit-input" rows="4" style="background:#fffbeb; border-color:#fde68a;"><?php echo esc_textarea($order->notes); ?></textarea>
+                        <textarea name="afon_notes" class="edit-input" rows="4" style="background:#fffbeb;"></textarea>
                     </div>
                 </div>
             </div>
 
             <div class="sidebar-column">
-                <div class="view-card">
-                    <div class="view-card-header"><h2>Customer Details</h2></div>
+                <div class="view-card" style="border-top: 4px solid var(--clr-primary);">
+                    <div class="view-card-header"><h2>Kitchen Timer</h2></div>
                     <div class="view-card-body">
-                        <div style="margin-bottom:15px;">
-                            <label style="font-size:11px; font-weight:800; color:#64748b;">FULL NAME</label>
-                            <input type="text" name="afon_customer_name" value="<?php echo esc_attr($order->full_name); ?>" class="edit-input">
+                        <div style="margin-bottom:20px;">
+                            <label class="field-label">Due In (Minutes)</label>
+                            <div style="display:flex; align-items:center; gap:10px;">
+                                <input type="number" name="afon_scheduled_time" 
+                                       value="<?php echo intval($order->scheduled_time); ?>" 
+                                       class="edit-input" 
+                                       style="font-weight:bold; font-size:24px; color:var(--clr-primary); text-align:center; width:120px;">
+                                <span style="font-weight:800; color:#64748b;">MINS</span>
+                            </div>
+                            <p style="font-size:10px; color:#94a3b8; margin-top:8px;">Enter '67' to show 67:00 on dashboard.</p>
                         </div>
-                        <div style="margin-bottom:15px;">
-                            <label style="font-size:11px; font-weight:800; color:#64748b;">PHONE</label>
-                            <input type="text" name="afon_customer_phone" value="<?php echo esc_attr($order->phone); ?>" class="edit-input">
-                        </div>
+                        
                         <div>
-                            <label style="font-size:11px; font-weight:800; color:#64748b;">ADDRESS</label>
-                            <textarea name="afon_customer_address" class="edit-input" rows="3"><?php echo esc_textarea($order->address); ?></textarea>
+                            <label class="field-label">Customer Delay Message</label>
+                            <textarea name="afon_delay_message" class="edit-input" rows="4" value="We are currently preparing your fresh meal. We'll have it with you as soon as possible! Thank you for your patience."><?php echo esc_textarea($order->delay_message); ?></textarea>
                         </div>
                     </div>
                 </div>
 
                 <div class="view-card">
-                    <div class="view-card-header"><h2>Order Actions</h2></div>
+                    <div class="view-card-header"><h2>Order Status</h2></div>
                     <div class="view-card-body">
                         <div style="margin-bottom:20px;">
-                            <label style="font-size:11px; font-weight:800; color:#64748b;">CURRENT STATUS</label>
-                            <select name="afon_status" class="edit-input" style="font-weight:700; height:40px; background:#f8fafc;">
-                                <option value="pending" <?php selected($order->order_status, 'pending'); ?>>🔴 PENDING (New Order)</option>
-                                <option value="cooking" <?php selected($order->order_status, 'cooking'); ?>>🟠 COOKING (Kitchen)</option>
-                                <option value="rider" <?php selected($order->order_status, 'rider'); ?>>🔵 RIDER (Out for Delivery)</option>
+                            <label class="field-label">Current Status</label>
+                            <select name="afon_status" class="edit-input" style="font-weight:700; height:45px;">
+                                <option value="pending" <?php selected($order->order_status, 'pending'); ?>>🔴 PENDING</option>
+                                <option value="cooking" <?php selected($order->order_status, 'cooking'); ?>>🟠 COOKING</option>
+                                <option value="rider" <?php selected($order->order_status, 'rider'); ?>>🔵 RIDER</option>
                                 <option value="completed" <?php selected($order->order_status, 'completed'); ?>>🟢 COMPLETED</option>
-                                <option value="cancelled" <?php selected($order->order_status, 'cancelled'); ?>>⚪ CANCELLED</option>
                             </select>
                         </div>
-                        <button type="submit" name="afon_update_order" class="btn-v btn-save">
-                            <span class="dashicons dashicons-saved"></span> SAVE CHANGES
-                        </button>
+                        <button type="submit" name="afon_update_order" class="btn-v btn-save">SAVE CHANGES</button>
                     </div>
                 </div>
             </div>
@@ -214,7 +224,10 @@ jQuery(document).ready(function($) {
     });
 
     $(document).on('click', '.remove-item', function() {
-        if($('.item-row').length > 1) { $(this).closest('tr').remove(); calculate(); }
+        if($('.item-row').length > 1) {
+            $(this).closest('tr').remove();
+            calculate();
+        }
     });
 
     $(document).on('input', '.price-trigger, .qty-trigger', calculate);

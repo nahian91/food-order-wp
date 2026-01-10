@@ -256,21 +256,21 @@ add_action('admin_menu', function(){
     );
 });
 
-
-if (!defined('ABSPATH')) exit;
-
 /*--------------------------------------------------------------
-# 1. Database Table Creation (Updated with Scheduled Time)
+# 1. Database Table Creation (Force-Fix Version)
 --------------------------------------------------------------*/
 function afd_create_orders_table() {
     global $wpdb;
     $table_name = $wpdb->prefix . 'afd_food_orders'; 
     $charset_collate = $wpdb->get_charset_collate();
 
-    /**
-     * display_id: Stores the permanent ID (e.g., 20260105-0001)
-     * scheduled_time: Stores "asap" or the selected time string.
-     */
+    // 1. Check if delay_message column exists, if not, add it manually
+    $column = $wpdb->get_results($wpdb->prepare("SHOW COLUMNS FROM `$table_name` LIKE %s", 'delay_message'));
+    if (empty($column)) {
+        $wpdb->query("ALTER TABLE `$table_name` ADD `delay_message` TEXT NOT NULL AFTER `scheduled_time`;");
+    }
+
+    // 2. Standard table creation/sync
     $sql = "CREATE TABLE $table_name (
         id bigint(20) NOT NULL AUTO_INCREMENT,
         display_id varchar(20) DEFAULT '' NOT NULL,
@@ -282,6 +282,7 @@ function afd_create_orders_table() {
         address text NOT NULL,
         notes text NOT NULL,
         scheduled_time varchar(50) DEFAULT 'asap' NOT NULL,
+        delay_message text NOT NULL,
         items_json longtext NOT NULL,
         subtotal decimal(10,2) DEFAULT '0.00' NOT NULL,
         delivery_fee decimal(10,2) DEFAULT '0.00' NOT NULL,
@@ -294,7 +295,8 @@ function afd_create_orders_table() {
     require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
     dbDelta( $sql );
 }
-add_action('init', 'afd_create_orders_table');
+// Run this on admin_init so it triggers the column check immediately
+add_action('admin_init', 'afd_create_orders_table');
 
 
 /*--------------------------------------------------------------
@@ -319,7 +321,7 @@ function afd_generate_unique_display_id() {
 
 
 /*--------------------------------------------------------------
-# 3. Helper: Insert Custom Order (Supports Pre-Orders)
+# 3. Helper: Insert Custom Order (Supports Pre-Orders & Delay Msg)
 --------------------------------------------------------------*/
 function fd_insert_custom_order($data) {
     global $wpdb;
@@ -330,6 +332,7 @@ function fd_insert_custom_order($data) {
 
     // Determine Status: If time is not 'asap', it is a 'preorder'
     $time_val = isset($data['scheduledTime']) ? $data['scheduledTime'] : 'asap';
+    $delay_msg = isset($data['delayMessage']) ? $data['delayMessage'] : ''; // ADDED THIS
     $status_val = ($time_val === 'asap') ? 'pending' : 'preorder';
 
     $inserted = $wpdb->insert(
@@ -344,6 +347,7 @@ function fd_insert_custom_order($data) {
             'address'        => $data['address'],
             'notes'          => $data['notes'],
             'scheduled_time' => $time_val,
+            'delay_message'  => $delay_msg, // ADDED THIS
             'items_json'     => json_encode($data['cart']), 
             'subtotal'       => floatval($data['subtotal']),
             'delivery_fee'   => floatval($data['delivery']),
@@ -361,6 +365,7 @@ function fd_insert_custom_order($data) {
             '%s', // address
             '%s', // notes
             '%s', // scheduled_time
+            '%s', // delay_message
             '%s', // items_json
             '%f', // subtotal
             '%f', // delivery_fee

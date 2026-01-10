@@ -132,81 +132,103 @@ $user_address = get_user_meta($user_id, 'address', true);
                 <div class="tab-content account-content-card">
                     
                     <div class="tab-pane fade show active" id="tab-dash">
-                        <?php if ($live_order) : 
-                            $st = strtolower($live_order->order_status);
-                            $expiry = strtotime($live_order->order_date) + ($prep_time * 60);
-                            
-                            // Calculate Progress
-                            $prog = "5%"; 
-                            if($st == 'cooking') $prog = "40%";
-                            if($st == 'rider') $prog = "75%";
-                        ?>
-                            <div class="tracker-top">
-                                <div>
-                                    <h4 class="fw-bold m-0"><span class="live-dot"></span>Order #<?php echo $live_order->display_id; ?></h4>
-                                    <p class="text-muted small mt-1">Status: <span class="text-capitalize fw-bold text-dark"><?php echo $st; ?></span></p>
-                                </div>
-                                <div class="text-end">
-                                    <small class="text-muted fw-bold d-block mb-1">REMAINING</small>
-                                    <div class="timer-pill live-js-timer" data-expiry="<?php echo $expiry; ?>">00:00</div>
-                                </div>
-                            </div>
+    <?php if ($live_order) : 
+        $st = strtolower($live_order->order_status);
+        
+        /**
+         * TIMER SYNC LOGIC
+         * We take the 'scheduled_time' (which you now save as raw minutes, e.g., 67)
+         * and add it to the current time to create the live countdown.
+         */
+        $minutes_remaining = intval($live_order->scheduled_time);
+        $expiry = current_time('timestamp') + ($minutes_remaining * 60);
+        
+        // Calculate Progress Bar Width
+        $prog = "5%"; 
+        if($st == 'cooking') $prog = "40%";
+        if($st == 'rider') $prog = "75%";
+    ?>
+        <div class="tracker-top">
+            <div>
+                <h4 class="fw-bold m-0"><span class="live-dot"></span>Order #<?php echo esc_html($live_order->display_id); ?></h4>
+                <p class="text-muted small mt-1">Status: <span class="text-capitalize fw-bold text-dark"><?php echo esc_html($st); ?></span></p>
+            </div>
+            <div class="text-end">
+                <small class="text-muted fw-bold d-block mb-1">ESTIMATED ARRIVAL</small>
+                <div class="timer-pill live-js-timer" data-expiry="<?php echo esc_attr($expiry); ?>">00:00</div>
+            </div>
+        </div>
 
-                            <div class="live-tracker-card">
-                                <div class="stepper-container">
-                                    <div class="stepper-line"></div>
-                                    <div class="stepper-progress" style="width: <?php echo $prog; ?>;"></div>
-
-                                    <div class="step-item <?php echo in_array($st, ['pending','cooking','rider']) ? 'active' : ''; ?> <?php echo in_array($st, ['cooking','rider']) ? 'completed' : ''; ?>">
-                                        <div class="step-circle"><span class="dashicons dashicons-clipboard"></span></div>
-                                        <div class="step-label">Placed</div>
-                                    </div>
-
-                                    <div class="step-item <?php echo ($st == 'cooking') ? 'active' : ''; ?> <?php echo ($st == 'rider') ? 'completed' : ''; ?>">
-                                        <div class="step-circle"><span class="dashicons dashicons-food"></span></div>
-                                        <div class="step-label">Cooking</div>
-                                    </div>
-
-                                    <div class="step-item <?php echo ($st == 'rider') ? 'active' : ''; ?>">
-                                        <div class="step-circle"><span class="dashicons dashicons-location-alt"></span></div>
-                                        <div class="step-label">On Way</div>
-                                    </div>
-
-                                    <div class="step-item">
-                                        <div class="step-circle"><span class="dashicons dashicons-yes-alt"></span></div>
-                                        <div class="step-label">Delivered</div>
-                                    </div>
-                                </div>
-                            </div>
-                        <?php else: ?>
-                            <div class="welcome-banner">
-                                <h3 class="fw-bold m-0">Welcome back, <?php echo esc_html($current_user->first_name); ?>!</h3>
-                                <p class="text-muted mt-2">Ready for your next meal? Your favorites are just a click away.</p>
-                                <a href="<?php echo home_url('/menu/'); ?>" class="btn btn-danger mt-3 px-4 py-2 rounded-pill fw-bold">Browse Menu</a>
-                            </div>
-                        <?php endif; ?>
-
-                        <hr class="my-5 opacity-25">
-                        <h5 class="fw-bold mb-4">Account Overview</h5>
-                        <div class="row">
-                            <div class="col-md-4 mb-3">
-                                <div class="p-4 border rounded-4 text-center">
-                                    <h2 class="fw-bold text-danger"><?php echo count($all_orders); ?></h2>
-                                    <small class="text-muted fw-bold">TOTAL ORDERS</small>
-                                </div>
-                            </div>
-                            <div class="col-md-4 mb-3">
-                                <button onclick="document.querySelector('[data-bs-target=\'#tab-orders\']').click()" class="btn btn-light w-100 h-100 py-3 rounded-4 border text-start px-3 d-flex align-items-center">
-                                    <span class="dashicons dashicons-list-view text-danger me-2"></span> <b>Order History</b>
-                                </button>
-                            </div>
-                            <div class="col-md-4 mb-3">
-                                <button onclick="document.querySelector('[data-bs-target=\'#tab-profile\']').click()" class="btn btn-light w-100 h-100 py-3 rounded-4 border text-start px-3 d-flex align-items-center">
-                                    <span class="dashicons dashicons-admin-users text-danger me-2"></span> <b>Edit Profile</b>
-                                </button>
-                            </div>
-                        </div>
+        <div class="live-tracker-card">
+            <?php if(!empty($live_order->delay_message)): ?>
+                <div style="background: #fff5f5; border: 1px solid #fee2e2; padding: 15px; border-radius: 15px; margin-bottom: 25px; display: flex; align-items: flex-start; gap: 10px;">
+                    <span class="dashicons dashicons-warning" style="color: var(--primary-red); margin-top: 2px;"></span>
+                    <div>
+                        <strong style="color: #991b1b; display: block; font-size: 14px;">Update from Kitchen</strong>
+                        <span style="color: #b91c1c; font-size: 13px; line-height: 1.4;"><?php echo esc_html($live_order->delay_message); ?></span>
                     </div>
+                </div>
+            <?php endif; ?>
+
+            <div class="stepper-container">
+                <div class="stepper-line"></div>
+                <div class="stepper-progress" style="width: <?php echo $prog; ?>;"></div>
+
+                <div class="step-item <?php echo in_array($st, ['pending','cooking','rider']) ? 'active' : ''; ?> <?php echo in_array($st, ['cooking','rider']) ? 'completed' : ''; ?>">
+                    <div class="step-circle">
+                        <?php echo in_array($st, ['cooking','rider']) ? '<span class="dashicons dashicons-yes"></span>' : '<span class="dashicons dashicons-clipboard"></span>'; ?>
+                    </div>
+                    <div class="step-label">Placed</div>
+                </div>
+
+                <div class="step-item <?php echo ($st == 'cooking') ? 'active' : ''; ?> <?php echo ($st == 'rider') ? 'completed' : ''; ?>">
+                    <div class="step-circle">
+                        <?php echo ($st == 'rider') ? '<span class="dashicons dashicons-yes"></span>' : '<span class="dashicons dashicons-food"></span>'; ?>
+                    </div>
+                    <div class="step-label">Cooking</div>
+                </div>
+
+                <div class="step-item <?php echo ($st == 'rider') ? 'active' : ''; ?>">
+                    <div class="step-circle"><span class="dashicons dashicons-location-alt"></span></div>
+                    <div class="step-label">On Way</div>
+                </div>
+
+                <div class="step-item">
+                    <div class="step-circle"><span class="dashicons dashicons-yes-alt"></span></div>
+                    <div class="step-label">Delivered</div>
+                </div>
+            </div>
+        </div>
+    <?php else: ?>
+        <div class="welcome-banner">
+            <h3 class="fw-bold m-0">Welcome back, <?php echo esc_html($current_user->first_name); ?>!</h3>
+            <p class="text-muted mt-2">Ready for your next meal? Your favorites are just a click away.</p>
+            <a href="<?php echo home_url('/menu/'); ?>" class="btn btn-danger mt-3 px-4 py-2 rounded-pill fw-bold">Browse Menu</a>
+        </div>
+    <?php endif; ?>
+
+    <hr class="my-5 opacity-25">
+    
+    <h5 class="fw-bold mb-4">Account Overview</h5>
+    <div class="row">
+        <div class="col-md-4 mb-3">
+            <div class="p-4 border rounded-4 text-center bg-white">
+                <h2 class="fw-bold text-danger"><?php echo count($all_orders); ?></h2>
+                <small class="text-muted fw-bold">TOTAL ORDERS</small>
+            </div>
+        </div>
+        <div class="col-md-4 mb-3">
+            <button onclick="document.querySelector('[data-bs-target=\'#tab-orders\']').click()" class="btn btn-light w-100 h-100 py-3 rounded-4 border text-start px-3 d-flex align-items-center bg-white">
+                <span class="dashicons dashicons-list-view text-danger me-2"></span> <b>Order History</b>
+            </button>
+        </div>
+        <div class="col-md-4 mb-3">
+            <button onclick="document.querySelector('[data-bs-target=\'#tab-profile\']').click()" class="btn btn-light w-100 h-100 py-3 rounded-4 border text-start px-3 d-flex align-items-center bg-white">
+                <span class="dashicons dashicons-admin-users text-danger me-2"></span> <b>Edit Profile</b>
+            </button>
+        </div>
+    </div>
+</div>
 
                     <div class="tab-pane fade" id="tab-orders">
                         <h4 class="fw-bold mb-4">Past Orders</h4>

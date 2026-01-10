@@ -1,8 +1,10 @@
 <?php
 /**
- * AWESOME FOOD DELIVERY - PREMIUM MASTER DASHBOARD
- * Features: Original Layout, Pre-Order Workflow, Thermal Printing, Auto-Refresh, & Live Timer
+ * AWESOME FOOD DELIVERY - ULTIMATE MASTER DASHBOARD
+ * Features: Action Labels, Deep Search, Full Edit, Status Filters, Kitchen & Receipt Printing
+ * SPECIAL FEATURE: Kitchen Timer Syncs automatically when Scheduled Time is edited.
  */
+
 if (!defined('ABSPATH')) exit;
 
 global $wpdb;
@@ -10,271 +12,271 @@ $table_name = $wpdb->prefix . 'afd_food_orders';
 
 // --- 1. ACTION HANDLERS ---
 
-// Updated Serial Status Workflow (Now includes Pre-Order support)
+// UPDATE STATUS
 if (isset($_GET['action']) && $_GET['action'] === 'update_status' && isset($_GET['order_id']) && isset($_GET['new_status'])) {
     $order_id = intval($_GET['order_id']);
     $new_status = sanitize_text_field($_GET['new_status']);
-    $wpdb->update($table_name, ['order_status' => $new_status], ['id' => $order_id]);
+    $update_data = ['order_status' => $new_status];
     
-    $redirect_url = admin_url('admin.php?page=awesome_food_delivery&tab=orders');
-    echo "<script>window.location.href='$redirect_url';</script>";
+    if ($new_status === 'cooking') { 
+        $update_data['order_date'] = current_time('mysql'); 
+    }
+    
+    $wpdb->update($table_name, $update_data, ['id' => $order_id]);
+    echo "<script>window.location.href='admin.php?page=awesome_food_delivery&tab=orders';</script>";
     exit;
 }
 
-// ACTION: DELETE ORDER
-if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['order_id'])) {
-    if (isset($_GET['_wpnonce']) && wp_verify_nonce($_GET['_wpnonce'], 'delete_order_' . $_GET['order_id'])) {
-        $delete_id = intval($_GET['order_id']);
-        $wpdb->delete($table_name, ['id' => $delete_id], ['%d']);
+// SAVE EDITED ORDER (Updated with Timer Sync Logic)
+if (isset($_POST['afd_save_order'])) {
+    $order_id = intval($_POST['order_id']);
+    
+    // Fetch old data to calculate time difference for the timer
+    $old_order = $wpdb->get_row($wpdb->prepare("SELECT scheduled_time, order_date FROM $table_name WHERE id = %d", $order_id));
+    
+    $new_scheduled_time = sanitize_text_field($_POST['scheduled_time']);
+    $new_order_date = $old_order->order_date;
+
+    // TIMER SYNC LOGIC: If Scheduled Time changes, adjust the Kitchen Timer (order_date)
+    if ($old_order && $old_order->scheduled_time !== $new_scheduled_time) {
+        $old_ts = strtotime($old_order->scheduled_time);
+        $new_ts = strtotime($new_scheduled_time);
+        
+        if ($old_ts && $new_ts) {
+            $diff_seconds = $new_ts - $old_ts;
+            // Shift the internal anchor date by the difference
+            $new_order_date = date('Y-m-d H:i:s', strtotime($old_order->order_date) + $diff_seconds);
+        }
     }
+
+    $wpdb->update($table_name, [
+        'full_name'      => sanitize_text_field($_POST['full_name']),
+        'phone'          => sanitize_text_field($_POST['phone']),
+        'address'        => sanitize_textarea_field($_POST['address']),
+        'notes'          => sanitize_textarea_field($_POST['notes']),
+        'scheduled_time' => $new_scheduled_time,
+        'delay_message'  => sanitize_textarea_field($_POST['delay_message']),
+        'order_date'     => $new_order_date, // This updates the timer
+    ], ['id' => $order_id]);
+    
+    echo "<div class='updated'><p>Order Details & Kitchen Timer Updated Successfully.</p></div>";
 }
 
-// ACTION: THERMAL PRINT HANDLER (Updated with Scheduled Time)
-if (isset($_GET['action']) && $_GET['action'] === 'print' && isset($_GET['order_id'])) {
-    $order_id = intval($_GET['order_id']);
-    $type = $_GET['type']; 
-    $order = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $order_id));
-    
-    if ($order) {
-        $display_id = $order->display_id; 
-        $items = json_decode($order->items_json, true);
-        if (ob_get_length()) ob_clean(); 
-        ?>
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <style>
-                body { font-family: "Courier New", Courier, monospace; width: 72mm; margin: 0 auto; padding: 10px; color: #000; }
-                .text-center { text-align: center; }
-                .header { border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 10px; text-align: center; }
-                .main-id { font-size: 32px; font-weight: 900; }
-                .type-badge { background: #000; color: #fff; padding: 5px; font-size: 18px; font-weight: bold; display: inline-block; margin-top: 5px; text-transform: uppercase; }
-                .time-box { border: 2px solid #000; padding: 5px; font-size: 18px; font-weight: 900; margin-top: 10px; display: block; }
-                table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-                .item-row td { padding: 8px 0; border-bottom: 1px dashed #000; vertical-align: top; }
-                <?php if($type === 'kitchen'): ?>
-                    .qty { font-size: 34px; font-weight: 900; width: 50px; }
-                    .item-name { font-size: 22px; font-weight: bold; text-transform: uppercase; }
-                <?php else: ?>
-                    .qty { font-size: 18px; font-weight: bold; width: 30px; }
-                    .item-name { font-size: 18px; font-weight: bold; }
-                    .price { text-align: right; font-size: 18px; }
-                    .total-row { font-size: 22px; font-weight: 900; border-top: 2px solid #000; }
-                <?php endif; ?>
-                .notes { background: #000; color: #fff; padding: 8px; margin-top: 10px; text-align: center; font-weight: bold; font-size: 18px; }
-            </style>
-        </head>
-        <body onload="window.print();">
-            <div class="header">
-                <span class="main-id">#<?php echo $display_id; ?></span><br>
-                <div class="type-badge"><?php echo esc_html($order->order_type); ?></div>
-                <div class="time-box">TIME: <?php echo strtoupper(esc_html($order->scheduled_time)); ?></div>
-            </div>
-            <div>
-                <strong><?php echo esc_html($order->full_name); ?></strong><br>
-                TEL: <?php echo esc_html($order->phone); ?><br>
-                <?php if($order->order_type === 'delivery'): ?>ADDR: <?php echo esc_html($order->address); ?><?php endif; ?>
-            </div>
-            <table>
-                <?php if(is_array($items)) : foreach($items as $item) : ?>
-                    <tr class="item-row">
-                        <td class="qty"><?php echo $item['qty']; ?>x</td>
-                        <td class="item-name"><?php echo esc_html($item['name']); ?></td>
-                        <?php if($type === 'customer'): ?><td class="price"><?php echo number_format($item['price'] * $item['qty'], 2); ?></td><?php endif; ?>
-                    </tr>
-                <?php endforeach; endif; ?>
-                <?php if($type === 'customer'): ?>
-                    <tr class="total-row"><td colspan="2" style="padding-top:10px;">TOTAL</td><td class="price" style="padding-top:10px;"><?php echo number_format($order->total_price, 2); ?></td></tr>
-                <?php endif; ?>
-            </table>
-            <?php if(!empty($order->notes)): ?><div class="notes">NOTE: <?php echo strtoupper(esc_html($order->notes)); ?></div><?php endif; ?>
-            <div class="text-center" style="margin-top:20px; font-size:12px;">*** <?php echo strtoupper($type); ?> COPY ***</div>
-        </body>
-        </html>
-        <?php
+// DELETE ORDER
+if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['order_id'])) {
+    if (isset($_GET['_wpnonce']) && wp_verify_nonce($_GET['_wpnonce'], 'delete_order_' . $_GET['order_id'])) {
+        $wpdb->delete($table_name, ['id' => intval($_GET['order_id'])]);
+        echo "<script>window.location.href='admin.php?page=awesome_food_delivery&tab=orders';</script>";
         exit;
     }
 }
 
-// --- 2. DATA PREP ---
+// --- 2. THERMAL PRINT ENGINE ---
+if (isset($_GET['action']) && $_GET['action'] === 'print' && isset($_GET['order_id'])) {
+    $order = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", intval($_GET['order_id'])));
+    if ($order) {
+        $type = $_GET['type']; 
+        $items = json_decode($order->items_json, true);
+        if (ob_get_length()) ob_clean(); ?>
+        <html><head><style>
+            body { font-family:monospace; width:72mm; margin:0 auto; padding:10px; color:#000; }
+            .header { text-align:center; border-bottom:2px solid #000; padding-bottom:10px; margin-bottom:10px; }
+            .main-id { font-size:32px; font-weight:900; }
+            table { width:100%; border-collapse:collapse; margin-top:10px; }
+            .qty { font-size:24px; font-weight:900; width:40px; }
+            .item-name { font-size:18px; font-weight:bold; }
+            .total { font-size:20px; font-weight:bold; text-align:right; margin-top:10px; }
+            .delay-box { border: 2px solid #000; padding: 5px; margin-top: 10px; text-align: center; font-weight: bold; }
+        </style></head>
+        <body onload="window.print();">
+            <div class="header">
+                <span class="main-id">#<?php echo $order->display_id; ?></span><br>
+                <strong><?php echo strtoupper($order->order_type); ?></strong><br>
+                TIME: <?php echo strtoupper($order->scheduled_time); ?>
+            </div>
+            <div><strong><?php echo $order->full_name; ?></strong><br>TEL: <?php echo $order->phone; ?></div>
+            
+            <?php if(!empty($order->delay_message)): ?>
+                <div class="delay-box">DELAY NOTE: <?php echo strtoupper($order->delay_message); ?></div>
+            <?php endif; ?>
+
+            <table><?php foreach($items as $i): ?><tr><td class="qty"><?php echo $i['qty']; ?>x</td><td class="item-name"><?php echo esc_html($i['name']); ?></td></tr><?php endforeach; ?></table>
+            <?php if($type==='customer'): ?><div class="total">TOTAL: £<?php echo number_format($order->total_price, 2); ?></div><?php endif; ?>
+            <?php if(!empty($order->notes)): ?><div style="background:#000; color:#fff; padding:5px; margin-top:10px; text-align:center;">KITCHEN NOTE: <?php echo strtoupper($order->notes); ?></div><?php endif; ?>
+        </body></html><?php exit;
+    }
+}
+
+// --- 3. VIEW / EDIT MODAL PAGES ---
+if (isset($_GET['action']) && ($_GET['action'] === 'view' || $_GET['action'] === 'edit') && isset($_GET['order_id'])) {
+    $order = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", intval($_GET['order_id'])));
+    $is_edit = ($_GET['action'] === 'edit');
+    if ($order) { ?>
+        <div class="wrap afd-dashboard">
+            <h1><?php echo $is_edit ? 'Edit Order' : 'View Details'; ?> #<?php echo $order->display_id; ?></h1>
+            <a href="admin.php?page=awesome_food_delivery&tab=orders" class="button">← Back to Dashboard</a>
+            <form method="post" action="">
+                <input type="hidden" name="order_id" value="<?php echo $order->id; ?>">
+                <div style="display:grid; grid-template-columns:1fr 380px; gap:20px; margin-top:20px;">
+                    <div style="background:#fff; padding:25px; border:1px solid #ccd0d4; border-radius:8px;">
+                        <table class="form-table">
+                            <tr>
+                                <th>Scheduled Time</th>
+                                <td>
+                                    <input type="text" name="scheduled_time" class="regular-text" style="font-weight:900; color:#d63638; font-size:18px;" value="<?php echo esc_attr($order->scheduled_time); ?>" <?php echo $is_edit?'':'readonly'; ?>>
+                                    <p class="description">Changing this will automatically update the Kitchen Timer on the dashboard.</p>
+                                </td>
+                            </tr>
+                            <tr><th>Customer Name</th><td><input type="text" name="full_name" class="regular-text" value="<?php echo esc_attr($order->full_name); ?>" <?php echo $is_edit?'':'readonly'; ?>></td></tr>
+                            <tr><th>Phone</th><td><input type="text" name="phone" class="regular-text" value="<?php echo esc_attr($order->phone); ?>" <?php echo $is_edit?'':'readonly'; ?>></td></tr>
+                            <tr><th>Address</th><td><textarea name="address" rows="4" class="large-text" <?php echo $is_edit?'':'readonly'; ?>><?php echo esc_textarea($order->address); ?></textarea></td></tr>
+                            <tr>
+                                <th>Customer Delay Message</th>
+                                <td>
+                                    <textarea name="delay_message" rows="3" class="large-text" placeholder="Update customer on traffic/delays..." <?php echo $is_edit?'':'readonly'; ?>><?php echo esc_textarea($order->delay_message); ?></textarea>
+                                </td>
+                            </tr>
+                            <tr><th>Kitchen Notes</th><td><textarea name="notes" rows="3" class="large-text" <?php echo $is_edit?'':'readonly'; ?>><?php echo esc_textarea($order->notes); ?></textarea></td></tr>
+                        </table>
+                        <?php if($is_edit): ?><button type="submit" name="afd_save_order" class="button button-primary" style="height:45px; width:220px; font-weight:bold;">SAVE & UPDATE TIMER</button><?php endif; ?>
+                    </div>
+                </div>
+            </form>
+        </div>
+    <?php return; }
+}
+
+// --- 4. MAIN DASHBOARD ---
 $prep_time = intval(get_option('afd_cooking_time', 20));
-$afon_orders = $wpdb->get_results("SELECT * FROM $table_name ORDER BY id DESC LIMIT 1000");
-$wp_time_format = get_option('time_format');
+$afon_orders = $wpdb->get_results("SELECT * FROM $table_name ORDER BY id DESC LIMIT 500");
 $server_now = current_time('timestamp'); 
 ?>
 
 <style>
-    :root { 
-        --clr-preorder: #8b5cf6;
-        --clr-pending: #d63638; 
-        --clr-cooking: #f59e0b; 
-        --clr-rider: #3b82f6; 
-        --clr-delivered: #46b450; 
-        --clr-dark: #2c3338;
-        --clr-border: #ccd0d4;
-    }
-
-    .afd-dashboard { margin-top: 20px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: var(--clr-dark); }
-    
-    #afon-orders-table { background: #fff; border: 1px solid var(--clr-border); border-radius: 8px; overflow: hidden; border-collapse: separate; border-spacing: 0; width: 100%; }
-    #afon-orders-table th { background: #f9f9f9; padding: 15px; font-weight: 700; text-transform: uppercase; font-size: 11px; color: #646970; border-bottom: 2px solid var(--clr-border); text-align: left; }
+    :root { --clr-preorder: #8b5cf6; --clr-pending: #d63638; --clr-cooking: #f59e0b; --clr-rider: #3b82f6; --clr-delivered: #46b450; }
+    .afd-dashboard { margin-top: 20px; font-family: sans-serif; }
+    #afon-orders-table { width: 100%; background: #fff; border: 1px solid #ccd0d4; border-radius: 8px; border-collapse: separate; border-spacing: 0; }
+    #afon-orders-table th { background: #f9f9f9; padding: 15px; border-bottom: 2px solid #ccd0d4; text-align: left; font-size: 11px; text-transform: uppercase; color: #666; }
     #afon-orders-table td { padding: 12px 15px; border-bottom: 1px solid #f0f0f1; vertical-align: middle; }
-    
-    /* STATUS BADGES */
-    .st-badge { padding: 5px 12px; border-radius: 20px; font-size: 10px; font-weight: 800; color: #fff; text-transform: uppercase; display: inline-block; }
-    .status-preorder { background: var(--clr-preorder); }
+    .st-badge { padding: 4px 10px; border-radius: 20px; font-size: 10px; font-weight: 800; color: #fff; text-transform: uppercase; }
     .status-pending { background: var(--clr-pending); animation: afd-pulse 2s infinite; }
     .status-cooking { background: var(--clr-cooking); }
     .status-rider { background: var(--clr-rider); }
     .status-completed { background: var(--clr-delivered); }
-
-    /* ACTION BUTTONS */
-    .btn-wrap { display: flex; gap: 5px; justify-content: flex-end; align-items: center; }
-    
-    .fd-action-btn {
-        display: inline-flex; align-items: center; gap: 6px; 
-        padding: 6px 12px; border-radius: 4px; border: 1px solid var(--clr-border);
-        background: #fff; color: #2c3338; transition: 0.2s; cursor: pointer;
-        text-decoration: none; font-size: 13px; font-weight: 600;
-    }
-    .fd-action-btn:hover { background: #f6f7f7; border-color: #a7aaad; color: #2271b1; }
-    
-    /* WORKFLOW BUTTONS */
-    .btn-workflow { background: #fff; border-color: #2271b1; color: #2271b1; }
-    .btn-workflow:hover { background: #f0f6ff; border-color: #2271b1; color: #135e96; }
-    .btn-preorder-accept { border-color: var(--clr-preorder); color: var(--clr-preorder); }
-
-    /* DELETE ICON */
-    .btn-delete { color: #d63638; padding: 6px 10px; }
-    .btn-delete:hover { background: #fcf0f1; border-color: #d63638; }
-
-    /* TIMER */
-    .timer-box { font-family: monospace; font-weight: 700; font-size: 14px; color: var(--clr-cooking); background: #fff8e5; padding: 4px 10px; border-radius: 4px; border: 1px solid #ffb900; display: inline-flex; align-items: center; gap: 5px; }
-    .timer-late { background: #fcf0f1; color: var(--clr-pending); border-color: var(--clr-pending); animation: afd-pulse 1s infinite; }
-
-    @keyframes afd-pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
+    .timer-box { font-family: monospace; font-weight: 700; font-size: 14px; color: #c45100; background: #fff8e5; padding: 4px 10px; border: 1px solid #ffb900; border-radius: 4px; display: inline-flex; align-items: center; gap: 5px; }
+    .timer-late { background: #fcf0f1; color: #d63638; border-color: #d63638; animation: afd-pulse 1s infinite; }
+    .afd-filter-bar { display: flex; gap: 10px; margin-bottom: 20px; align-items: center; background:#fff; padding:15px; border:1px solid #ccc; border-radius:8px; }
+    .filter-btn { padding: 8px 15px; border-radius: 6px; border: 1px solid #ccc; background: #fff; cursor: pointer; font-size: 12px; font-weight: bold; }
+    .filter-btn.active { background: #2271b1; color: #fff; border-color: #2271b1; }
+    .fd-action-btn { text-decoration: none; padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; color: #333; font-size: 11px; font-weight: bold; background: #fff; display: inline-flex; align-items: center; gap: 5px; }
+    .fd-action-btn:hover { border-color: #2271b1; color: #2271b1; }
+    .dataTables_filter input { padding: 8px; width: 300px; border-radius: 6px; border: 1px solid #ccc; }
+    @keyframes afd-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
 </style>
 
 <div class="wrap afd-dashboard">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-        <h1 style="font-weight: 800; font-size: 24px; margin: 0;">Order Management</h1>
-        <div style="font-size: 12px; color: #666; background: #eee; padding: 5px 12px; border-radius: 20px;">
-            Auto-refresh in: <span id="timer-count" style="font-weight:bold;">30</span>s
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+        <h1 style="font-weight: 900; font-size: 24px;">Order Live-Feed Dashboard</h1>
+        <div style="background: #fff; padding: 5px 15px; border-radius: 20px; border: 1px solid #ccc; font-size: 12px; font-weight: bold;">
+            Auto-Refresh: <span id="timer-count" style="color:red;">30</span>s
         </div>
     </div>
-    
-    <table id="afon-orders-table" class="widefat">
+
+    <div class="afd-filter-bar">
+        <strong>Status Filters:</strong>
+        <button class="filter-btn active" data-status="">All</button>
+        <button class="filter-btn" data-status="pending">Pending</button>
+        <button class="filter-btn" data-status="cooking">Kitchen</button>
+        <button class="filter-btn" data-status="rider">Rider</button>
+        <button class="filter-btn" data-status="completed">Done</button>
+    </div>
+
+    <table id="afon-orders-table">
         <thead>
             <tr>
-                <th width="120">ID</th>
-                <th>Customer</th>
-                <th width="120">Status</th>
-                <th width="140">Cooking Time</th>
+                <th width="80">Order ID</th>
+                <th>Customer Name</th>
+                <th width="100">Status</th>
+                <th width="140">Kitchen Timer</th>
                 <th style="text-align: right;">Actions</th>
             </tr>
         </thead>
         <tbody>
-            <?php foreach ($afon_orders as $order) :
+            <?php foreach ($afon_orders as $order) : 
                 $st = strtolower($order->order_status);
-                $otime = strtotime($order->order_date);
-                $expiry = $otime + ($prep_time * 60);
+                $expiry = strtotime($order->order_date) + ($prep_time * 60);
                 $url = admin_url('admin.php?page=awesome_food_delivery&tab=orders&order_id=' . $order->id);
             ?>
-                <tr>
-                    <td><strong style="font-size:15px;">#<?php echo $order->display_id; ?></strong></td>
-                    <td>
-                        <strong><?php echo esc_html($order->full_name); ?></strong><br>
-                        <span style="font-size:11px; color:#d63638; font-weight:bold;">⏰ <?php echo strtoupper($order->scheduled_time); ?></span>
-                        <span style="font-size:11px; color:#888;"> • <?php echo strtoupper($order->order_type); ?></span>
-                    </td>
-                    <td><span class="st-badge status-<?php echo $st; ?>"><?php echo $st; ?></span></td>
-                    
-                    <td>
-                        <?php if ($st === 'cooking') : ?>
-                            <div class="timer-box live-timer-js" data-expiry="<?php echo $expiry; ?>">
-                                <span class="dashicons dashicons-clock" style="font-size:16px; margin-top:2px;"></span>
-                                <span class="time-string">00:00</span>
-                            </div>
-                        <?php else: ?>
-                            <span style="color:#ccc; padding-left:10px;">--:--</span>
-                        <?php endif; ?>
-                    </td>
-
-                    <td>
-                        <div class="btn-wrap">
-                            <?php if ($st === 'preorder') : ?>
-                                <a class="fd-action-btn btn-workflow btn-preorder-accept" href="<?php echo $url . '&action=update_status&new_status=pending'; ?>">
-                                    <span class="dashicons dashicons-calendar-alt"></span> Accept Pre-Order
-                                </a>
-                            <?php elseif ($st === 'pending') : ?>
-                                <a class="fd-action-btn btn-workflow" href="<?php echo $url . '&action=update_status&new_status=cooking'; ?>">
-                                    <span class="dashicons dashicons-carrot"></span> Start Cooking
-                                </a>
-                            <?php elseif ($st === 'cooking') : ?>
-                                <a class="fd-action-btn btn-workflow" href="<?php echo $url . '&action=update_status&new_status=rider'; ?>">
-                                    <span class="dashicons dashicons-id"></span> Hand to Rider
-                                </a>
-                            <?php elseif ($st === 'rider') : ?>
-                                <a class="fd-action-btn btn-workflow" href="<?php echo $url . '&action=update_status&new_status=completed'; ?>">
-                                    <span class="dashicons dashicons-yes-alt"></span> Mark Complete
-                                </a>
-                            <?php endif; ?>
-
-                            <a class="fd-action-btn" href="<?php echo $url . '&action=view'; ?>">
-                                <span class="dashicons dashicons-visibility"></span> View
-                            </a>
-                            
-                            <a class="fd-action-btn" href="<?php echo $url . '&action=edit'; ?>">
-                                <span class="dashicons dashicons-edit"></span> Edit
-                            </a>
-
-                            <a class="fd-action-btn" href="<?php echo $url . '&action=print&type=customer'; ?>" target="_blank">
-                                <span class="dashicons dashicons-printer"></span> Receipt
-                            </a>
-
-                            <a class="fd-action-btn" href="<?php echo $url . '&action=print&type=kitchen'; ?>" target="_blank">
-                                <span class="dashicons dashicons-carrot"></span> Kitchen
-                            </a>
-
-                            <a class="fd-action-btn btn-delete" href="<?php echo wp_nonce_url($url . '&action=delete', 'delete_order_' . $order->id); ?>" onclick="return confirm('Delete order?')">
-                                <span class="dashicons dashicons-trash"></span>
-                            </a>
+            <tr>
+                <td><strong>#<?php echo $order->display_id; ?></strong></td>
+                <td>
+                    <strong style="font-size:15px;"><?php echo esc_html($order->full_name); ?></strong><br>
+                    <span style="color:#d63638; font-weight:bold; font-size:11px;">⏰ <?php echo strtoupper($order->scheduled_time); ?></span>
+                    <?php if(!empty($order->delay_message)): ?>
+                        <br><span style="color:#8b5cf6; font-size:10px; font-weight:bold;">💬 DELAY SENT</span>
+                    <?php endif; ?>
+                </td>
+                <td><span class="st-badge status-<?php echo $st; ?>"><?php echo $st; ?></span></td>
+                <td>
+                    <?php if ($st === 'cooking') : ?>
+                        <div class="timer-box live-timer-js" data-expiry="<?php echo $expiry; ?>">
+                            <span class="dashicons dashicons-clock"></span> <span class="time-string">--:--</span>
                         </div>
-                    </td>
-                </tr>
+                    <?php else: ?><span style="color:#bbb; padding-left:10px;">--:--</span><?php endif; ?>
+                </td>
+                <td align="right">
+                    <div style="display: flex; gap: 5px; justify-content: flex-end; flex-wrap: wrap;">
+                        <?php if ($st === 'pending') : ?>
+                            <a class="fd-action-btn" style="color:#d63638; border-color:#d63638;" href="<?php echo $url . '&action=update_status&new_status=cooking'; ?>"><span class="dashicons dashicons-carrot"></span> START COOK</a>
+                        <?php elseif ($st === 'cooking') : ?>
+                            <a class="fd-action-btn" style="color:#3b82f6; border-color:#3b82f6;" href="<?php echo $url . '&action=update_status&new_status=rider'; ?>"><span class="dashicons dashicons-external"></span> READY</a>
+                        <?php endif; ?>
+                        
+                        <a class="fd-action-btn" href="<?php echo $url . '&action=view'; ?>"><span class="dashicons dashicons-visibility"></span> VIEW</a>
+                        <a class="fd-action-btn" href="<?php echo $url . '&action=edit'; ?>"><span class="dashicons dashicons-edit"></span> EDIT</a>
+                        <a class="fd-action-btn" href="<?php echo $url . '&action=print&type=kitchen'; ?>" target="_blank"><span class="dashicons dashicons-media-text"></span> KITCHEN</a>
+                        <a class="fd-action-btn" href="<?php echo $url . '&action=print&type=customer'; ?>" target="_blank"><span class="dashicons dashicons-printer"></span> RECEIPT</a>
+                        <a class="fd-action-btn" style="color:#d63638;" href="<?php echo wp_nonce_url($url . '&action=delete', 'delete_order_'.$order->id); ?>" onclick="return confirm('Delete Order?')"><span class="dashicons dashicons-trash"></span> DEL</a>
+                    </div>
+                </td>
+            </tr>
             <?php endforeach; ?>
         </tbody>
     </table>
 </div>
 
 <script>
-jQuery(document).ready(function($){ 
-    if ($.fn.DataTable) {
-        $('#afon-orders-table').DataTable({ "order": [[0, "desc"]], "pageLength": 50 });
-    }
+jQuery(document).ready(function($){
+    var table = $('#afon-orders-table').DataTable({
+        "order": [[0, "desc"]],
+        "pageLength": 50,
+        "language": { "search": "Quick Search:" }
+    });
+
+    $('.filter-btn').on('click', function(){
+        $('.filter-btn').removeClass('active');
+        $(this).addClass('active');
+        table.column(2).search($(this).data('status')).draw();
+    });
 
     var sT = <?php echo $server_now; ?>, bT = Math.floor(Date.now() / 1000), gap = sT - bT;
-
-    function updateLiveClocks() {
+    function updateClocks() {
         var now = Math.floor(Date.now() / 1000) + gap;
         $('.live-timer-js').each(function() {
             var diff = parseInt($(this).data('expiry')) - now;
-            if (diff <= 0) {
-                $(this).addClass('timer-late').find('.time-string').text("LATE");
-            } else {
-                var m = Math.floor(diff / 60), s = diff % 60;
-                $(this).find('.time-string').text((m < 10 ? "0" + m : m) + ":" + (s < 10 ? "0" + s : s));
+            if (diff <= 0) { $(this).addClass('timer-late').find('.time-string').text("LATE"); }
+            else { 
+                var m = Math.floor(diff / 60), s = diff % 60; 
+                $(this).find('.time-string').text((m < 10 ? "0"+m : m) + ":" + (s < 10 ? "0"+s : s)); 
             }
         });
     }
-    setInterval(updateLiveClocks, 1000);
-    updateLiveClocks();
+    setInterval(updateClocks, 1000); updateClocks();
 
-    var timeLeft = 30;
+    var refresh = 30;
     setInterval(function(){
-        timeLeft--; $('#timer-count').text(timeLeft);
-        if(timeLeft <= 0) location.reload();
+        refresh--; $('#timer-count').text(refresh);
+        if(refresh <= 0) location.reload();
     }, 1000);
 });
 </script>
