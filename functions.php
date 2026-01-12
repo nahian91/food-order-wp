@@ -397,8 +397,7 @@ function fd_main_page(){
     $active = $_GET['tab'] ?? 'dashboard';
     ?>
 
-    <div class="awesome-food-delivery">
-
+    <div class="awesome-food-delivery <?php echo (isset($_GET['action']) && $_GET['action'] === 'print') ? 'afd-print' : ''; ?>">
         <?php
         // Only show sidebar if NOT a print page
         if (!(isset($_GET['action']) && $_GET['action'] === 'print')) :
@@ -479,3 +478,4 @@ add_filter('login_redirect', function($redirect_to, $requested_redirect_to, $use
     // Default redirect for other users
     return $redirect_to;
 }, 10, 3);
+

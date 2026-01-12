@@ -71,42 +71,6 @@ if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['order
     }
 }
 
-// --- 2. THERMAL PRINT ENGINE ---
-if (isset($_GET['action']) && $_GET['action'] === 'print' && isset($_GET['order_id'])) {
-    $order = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", intval($_GET['order_id'])));
-    if ($order) {
-        $type = $_GET['type']; 
-        $items = json_decode($order->items_json, true);
-        if (ob_get_length()) ob_clean(); ?>
-        <html><head><style>
-            body { font-family:monospace; width:72mm; margin:0 auto; padding:10px; color:#000; }
-            .header { text-align:center; border-bottom:2px solid #000; padding-bottom:10px; margin-bottom:10px; }
-            .main-id { font-size:32px; font-weight:900; }
-            table { width:100%; border-collapse:collapse; margin-top:10px; }
-            .qty { font-size:24px; font-weight:900; width:40px; }
-            .item-name { font-size:18px; font-weight:bold; }
-            .total { font-size:20px; font-weight:bold; text-align:right; margin-top:10px; }
-            .delay-box { border: 2px solid #000; padding: 5px; margin-top: 10px; text-align: center; font-weight: bold; }
-        </style></head>
-        <body onload="window.print();">
-            <div class="header">
-                <span class="main-id">#<?php echo $order->display_id; ?></span><br>
-                <strong><?php echo strtoupper($order->order_type); ?></strong><br>
-                TIME: <?php echo strtoupper($order->scheduled_time); ?>
-            </div>
-            <div><strong><?php echo $order->full_name; ?></strong><br>TEL: <?php echo $order->phone; ?></div>
-            
-            <?php if(!empty($order->delay_message)): ?>
-                <div class="delay-box">DELAY NOTE: <?php echo strtoupper($order->delay_message); ?></div>
-            <?php endif; ?>
-
-            <table><?php foreach($items as $i): ?><tr><td class="qty"><?php echo $i['qty']; ?>x</td><td class="item-name"><?php echo esc_html($i['name']); ?></td></tr><?php endforeach; ?></table>
-            <?php if($type==='customer'): ?><div class="total">TOTAL: £<?php echo number_format($order->total_price, 2); ?></div><?php endif; ?>
-            <?php if(!empty($order->notes)): ?><div style="background:#000; color:#fff; padding:5px; margin-top:10px; text-align:center;">KITCHEN NOTE: <?php echo strtoupper($order->notes); ?></div><?php endif; ?>
-        </body></html><?php exit;
-    }
-}
-
 // --- 3. VIEW / EDIT MODAL PAGES ---
 if (isset($_GET['action']) && ($_GET['action'] === 'view' || $_GET['action'] === 'edit') && isset($_GET['order_id'])) {
     $order = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", intval($_GET['order_id'])));
