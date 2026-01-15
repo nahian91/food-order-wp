@@ -31,7 +31,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'print' && $_GET['type'] === '
                 background-color: #fff;
             }
             .afd-print {
-                width: 72mm;
+                width: 75mm;
                 margin: 0;
                 padding: 2mm; /* Internal padding for text safety */
                 box-sizing: border-box;
