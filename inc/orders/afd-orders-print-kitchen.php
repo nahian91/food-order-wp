@@ -30,8 +30,11 @@ if (isset($_GET['action']) && $_GET['action'] === 'print' && $_GET['type'] === '
                 color: #000;
                 background-color: #fff;
             }
+            .awesome-food-delivery.afd-print .afd-right-box {
+    width: 100%;
+}
             .afd-print {
-                width: 75mm;
+                width: 72mm;
                 margin: 0;
                 padding: 2mm; /* Internal padding for text safety */
                 box-sizing: border-box;
