@@ -25,20 +25,21 @@ if (isset($_GET['action']) && $_GET['action'] === 'print' && $_GET['type'] === '
             body { 
                 font-family: "Courier New", Courier, monospace; 
                 width: 72mm; 
-                margin: 0; /* FIX: Removed 'auto' to eliminate left margin gap */
+                margin: 0;
                 padding: 0; 
                 color: #000;
                 background-color: #fff;
             }
             .afd-print {
-                width: 72mm;
-                margin: 0;
-                padding: 2mm; /* Internal padding for text safety */
-                box-sizing: border-box;
-            }
+    width: 76mm; /* Increased from 72mm */
+    margin: 0 auto; /* Centers the receipt if the paper is slightly wider */
+    padding: 2mm; 
+    box-sizing: border-box; /* Keeps padding inside the 76mm width */
+    overflow: hidden; /* Prevents accidental horizontal scrolling */
+}
             .header { text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 10px; }
             .main-id { font-size: 38px; font-weight: 900; display: block; margin: 0; line-height: 1.1; }
-            .type-badge { background: #000; color: #fff; padding: 3px 10px; font-size: 20px; font-weight: bold; margin-top: 5px; display: inline-block; }
+            .type-badge { color: #000; font-size: 26px; font-weight: bold; margin-top: 5px; display: inline-block; }
             
             .customer-section { margin-bottom: 15px; line-height: 1.2; text-align: left; }
             .cust-name { font-size: 22px; font-weight: 900; text-transform: uppercase; display: block; }
