@@ -379,30 +379,3 @@
 .afon-label-muted-small { display: block; margin-bottom: 8px; font-size: 10px; text-transform: uppercase; color: #8c8f94; font-weight: 700; }
 .afon-address-text { font-weight: 500; line-height: 1.5; font-size: 13px; color: #1d2327; margin: 0; }
 .afon-text-primary { color: #d63638; }
-
-
-
-.awesome-food-delivery.afd-print {
-  margin: 0 5px;
-}
-.awesome-food-delivery.afd-print .afd-right-box {
-  min-width: 250px !important;
-}
-.awesome-food-delivery.afd-print .afd-right-box .main-id {
-  font-size: 16px;
-}
-.awesome-food-delivery.afd-print .afd-right-box .type-badge {
-  font-size: 15px;
-}
-.awesome-food-delivery.afd-print .afd-right-box .cust-name, .awesome-food-delivery.afd-print .afd-right-box .cust-phone {
-  font-size: 14px;
-}
-.awesome-food-delivery.afd-print .afd-right-box .qty {
-  vertical-align: middle;
-  font-size: 16px;
-  width: 35px;
-}
-.awesome-food-delivery.afd-print .afd-right-box .item-name {
-  font-size: 14px;
-  line-height: 14px;
-}
