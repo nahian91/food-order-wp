@@ -34,7 +34,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'print' && $_GET['type'] === '
     width: 100%;
 }
             .afd-print {
-                width: 80mm;
+                width: 90mm;
                 margin: 0;
                 padding: 2mm; /* Internal padding for text safety */
                 box-sizing: border-box;
