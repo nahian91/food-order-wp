@@ -2,6 +2,7 @@
 /**
  * Edit Order - Final Version
  * Features: DB Auto-Sync, Live Calculations, Minute-Based Kitchen Timer Sync
+ * Customer Info: Read-Only (Show after Order Items)
  */
 
 if (!defined('ABSPATH')) exit;
@@ -24,7 +25,7 @@ if (empty($column_check)) {
 }
 
 /*--------------------------------------------------------------
-# 2. SAVE LOGIC (With Minute-to-Timer Sync)
+# 2. SAVE LOGIC
 --------------------------------------------------------------*/
 if (isset($_POST['afon_update_order'])) {
     check_admin_referer('afon_update_order_action', 'afon_update_order_nonce');
@@ -43,11 +44,9 @@ if (isset($_POST['afon_update_order'])) {
         }
     }
 
-    // TIMER CALCULATION: Convert "Minutes" input into a DB timestamp
+    // TIMER CALCULATION
     $mins_input = intval($_POST['afon_scheduled_time']);
-    $prep_time_setting = intval(get_option('afd_cooking_time', 20)); // Get global cooking time setting
-    
-    // Logic: Reset order_date anchor so that (order_date + prep_time) = (now + input_mins)
+    $prep_time_setting = intval(get_option('afd_cooking_time', 20)); 
     $new_anchor_ts = current_time('timestamp') + (($mins_input - $prep_time_setting) * 60);
     $new_order_date = date('Y-m-d H:i:s', $new_anchor_ts);
 
@@ -58,14 +57,14 @@ if (isset($_POST['afon_update_order'])) {
         'order_status'   => sanitize_text_field($_POST['afon_status']),
         'items_json'     => json_encode($afon_updated_items),
         'total_price'    => floatval($_POST['afon_total_price']),
-        'scheduled_time' => $mins_input, // Save as raw number for countdown logic
-        'order_date'     => $new_order_date, // This updates the actual countdown timer
+        'scheduled_time' => $mins_input,
+        'order_date'     => $new_order_date,
     ];
 
     $result = $wpdb->update($table_name, $update_data, ['id' => $afon_order_id]);
 
     if ($result !== false) {
-        echo '<div class="updated notice is-dismissible"><p>Order Updated. Timer reset to ' . $mins_input . ' minutes.</p></div>';
+        echo '<div class="updated notice is-dismissible"><p>Order Updated successfully.</p></div>';
     }
 }
 
@@ -97,6 +96,10 @@ $display_id = !empty($order->display_id) ? $order->display_id : $order->id;
     .btn-save { background: var(--clr-primary); color: #fff !important; border: none; width: 100%; justify-content: center; height: 45px; margin-top: 10px; }
     .total-amount-display { font-size: 32px; font-weight: 900; color: var(--clr-primary); text-align: right; border: none; width: 100%; background: transparent; }
     label.field-label { font-size: 11px; font-weight: 800; color: #64748b; display: block; margin-bottom: 5px; text-transform: uppercase; }
+    
+    /* Static Info Styles */
+    .static-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .static-val { font-size: 15px; font-weight: 600; color: #1e293b; margin-bottom: 15px; }
 </style>
 
 <div class="view-order-wrap">
@@ -115,6 +118,7 @@ $display_id = !empty($order->display_id) ? $order->display_id : $order->id;
 
         <div class="view-grid">
             <div class="main-column">
+                
                 <div class="view-card">
                     <div class="view-card-header"><h2>Order Items</h2></div>
                     <div class="view-card-body" style="padding:0;">
@@ -148,9 +152,41 @@ $display_id = !empty($order->display_id) ? $order->display_id : $order->id;
                 </div>
 
                 <div class="view-card">
+                    <div class="view-card-header"><h2>Customer Details (Reference)</h2></div>
+                    <div class="view-card-body">
+                        <div class="static-info-grid">
+                            <div>
+                                <label class="field-label">Customer Name</label>
+                                <div class="static-val"><?php echo esc_html($order->full_name); ?></div>
+                            </div>
+                            <div>
+                                <label class="field-label">Phone Number</label>
+                                <div class="static-val" style="color:var(--clr-primary);"><?php echo esc_html($order->phone); ?></div>
+                            </div>
+                        </div>
+                        <div class="static-info-grid">
+                            <div>
+                                <label class="field-label">Email Address</label>
+                                <div class="static-val"><?php echo esc_html($order->email); ?></div>
+                            </div>
+                            <div>
+                                <label class="field-label">Delivery Type</label>
+                                <div class="static-val" style="text-transform: uppercase;"><?php echo esc_html($order->order_type); ?></div>
+                            </div>
+                        </div>
+                        <div style="margin-top:10px;">
+                            <label class="field-label">Delivery Address</label>
+                            <div class="static-val" style="line-height:1.5; color:#475569;">
+                                <?php echo $order->address ? nl2br(esc_html($order->address)) : '<em>Pickup / No address provided</em>'; ?>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="view-card">
                     <div class="view-card-header"><h2>Internal Kitchen Notes</h2></div>
                     <div class="view-card-body">
-                        <textarea name="afon_notes" class="edit-input" rows="4" style="background:#fffbeb;"></textarea>
+                        <textarea name="afon_notes" class="edit-input" rows="4" style="background:#fffbeb;"><?php echo esc_textarea($order->notes); ?></textarea>
                     </div>
                 </div>
             </div>
@@ -168,12 +204,11 @@ $display_id = !empty($order->display_id) ? $order->display_id : $order->id;
                                        style="font-weight:bold; font-size:24px; color:var(--clr-primary); text-align:center; width:120px;">
                                 <span style="font-weight:800; color:#64748b;">MINS</span>
                             </div>
-                            <p style="font-size:10px; color:#94a3b8; margin-top:8px;">Enter '67' to show 67:00 on dashboard.</p>
                         </div>
                         
                         <div>
                             <label class="field-label">Customer Delay Message</label>
-                            <textarea name="afon_delay_message" class="edit-input" rows="4" value="We are currently preparing your fresh meal. We'll have it with you as soon as possible! Thank you for your patience."><?php echo esc_textarea($order->delay_message); ?></textarea>
+                            <textarea name="afon_delay_message" class="edit-input" rows="4"><?php echo esc_textarea($order->delay_message); ?></textarea>
                         </div>
                     </div>
                 </div>

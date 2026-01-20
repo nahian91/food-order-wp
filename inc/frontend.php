@@ -209,6 +209,9 @@ function fd_food_items_shortcode() {
     
     $currency = '£';
     $saved_delivery_fee = get_option('afd_delivery_charge', '0.00');
+    $saved_service_fee  = get_option('afd_service_charge', '0.00');
+    $saved_bag_fee      = get_option('afd_bag_charge', '0.00');
+    $saved_discount     = get_option('afd_restaurant_discount', '0.00');
 
     // 2. FETCH DATA
     $items = get_posts([
@@ -246,7 +249,6 @@ function fd_food_items_shortcode() {
     ob_start(); ?>
 
 <style>
-    /* YOUR ORIGINAL CSS REMAINS THE SAME */
     .fd-main-wrapper { max-width: 1200px; margin: 0 auto; padding: 40px 20px; font-family: 'Inter', sans-serif; background: #fcfcfc; }
     .fd-search-container { margin-bottom: 40px; position: relative; }
     .fd-menu-search { width: 100%; padding: 18px 25px 18px 55px; border-radius: 15px; border: 1px solid #ddd; font-size: 16px; box-shadow: 0 5px 15px rgba(0,0,0,0.05); outline: none; transition: 0.3s; }
@@ -275,17 +277,20 @@ function fd_food_items_shortcode() {
     .fd-type-label { flex: 1; text-align: center; cursor: pointer; padding: 10px; border-radius: 8px; font-weight: 700; transition: 0.3s; color: #666; }
     .fd-order-type input { display: none; }
     .fd-order-type input:checked + .fd-type-label { background: #d63638; color: #fff; }
-    .fd-sticky-panel { position: sticky; top: 30px; background: #fff; border-radius: 25px; padding: 30px; border: 1px solid #eee; box-shadow: 0 20px 50px rgba(0,0,0,0.08); display: flex; flex-direction: column; max-height: 90vh; }
-    #fd-cart-list { overflow-y: auto; flex-grow: 1; margin-bottom: 15px; }
+    .fd-sticky-panel { background: #fff; border-radius: 25px; padding: 30px; border: 1px solid #eee; box-shadow: 0 20px 50px rgba(0,0,0,0.08); display: flex; flex-direction: column; }
+    #fd-cart-list { margin-bottom: 15px; }
     .fd-minus, .fd-plus { width: 28px; height: 28px; border-radius: 50%; border: 1px solid #ddd; background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; }
     .fd-cart-item { border-bottom: 1px solid #f8f8f8; padding: 15px 0; }
     .fd-checkout-btn { display: block; text-align: center; background:#d63638; color:#fff !important; padding:18px; border-radius:15px; margin-top:10px; font-weight:800; text-decoration: none !important; box-shadow: 0 10px 20px rgba(214, 54, 56, 0.2); }
     .order-btn { margin-top: 15px; padding: 12px 30px; background: #d63638; color: #fff; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; }
+    .fd-summary-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px; color: #666; }
+    .fd-summary-row.total-row { border-top: 2px dashed #eee; padding-top: 15px; margin-top: 10px; font-weight: 800; font-size: 22px; color: #1a1a1a; }
+    .fd-tip-input { width: 65px; padding: 4px 8px; border: 1px solid #ddd; border-radius: 6px; text-align: right; font-weight: 600; }
     .fd-schedule-wrap { margin-bottom: 20px; }
     .fd-schedule-wrap label { display: block; font-size: 12px; font-weight: 800; text-transform: uppercase; color: #666; margin-bottom: 8px; }
     .fd-schedule-select { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #ddd; background: #f9f9f9; font-weight: 600; outline: none; }
     .preorder-badge { background: #fffbeb; border: 1px solid #fef3c7; color: #92400e; padding: 12px; border-radius: 12px; font-size: 13px; font-weight: 700; margin-bottom: 20px; text-align: center; line-height: 1.4; }
-    @media (max-width: 991px) { .fd-cart-sidebar { width: 100%; order: -1; } .fd-sticky-panel { position: static; max-height: none; } }
+    @media (max-width: 991px) { .fd-cart-sidebar { width: 100%; order: -1; } }
 </style>
 
 <div class="fd-main-wrapper">
@@ -369,22 +374,36 @@ function fd_food_items_shortcode() {
                     </select>
                 </div>
 
-                <h4 style="margin:0 0 15px 0; font-weight:800; font-size:20px;">Your Cart</h4>
+                <h4 style="margin:0 0 15px 0; font-weight:800; font-size:20px;">Your Order</h4>
                 <div id="fd-cart-list"></div>
 
-                <div class="fd-cart-summary-footer" style="border-top: 2px dashed #eee; padding-top: 15px;">
-                    <div id="fd-fee-wrap" style="display:flex; justify-content:space-between; margin-bottom:10px; color:#666;">
-                        <span>Delivery Fee</span>
-                        <span id="fd-display-fee"><?php echo $currency . number_format(floatval($saved_delivery_fee), 2); ?></span>
+                <div class="fd-summary-container">
+                    <div class="fd-summary-row"><span>Subtotal</span><span><?php echo $currency; ?><span id="br-subtotal">0.00</span></span></div>
+                    
+                    <div class="fd-summary-row"><span>Restaurant discount</span><span>-<?php echo $currency . number_format((float)$saved_discount, 2); ?></span></div>
+                    
+                    <div class="fd-summary-row" style="font-weight:700; color:#1a1a1a;"><span>Order total</span><span><?php echo $currency; ?><span id="br-order-total">0.00</span></span></div>
+                    
+                    <div class="fd-summary-row"><span>Service Charge</span><span><?php echo $currency . number_format((float)$saved_service_fee, 2); ?></span></div>
+                    
+                    <div id="fd-delivery-row" class="fd-summary-row"><span>Delivery Charges</span><span><?php echo $currency . number_format((float)$saved_delivery_fee, 2); ?></span></div>
+                    
+                    <div class="fd-summary-row"><span>Bag Charge</span><span><?php echo $currency . number_format((float)$saved_bag_fee, 2); ?></span></div>
+                    
+                    <div class="fd-summary-row">
+                        <span>Tips</span>
+                        <span><?php echo $currency; ?><input type="number" id="fd-tip-amount" class="fd-tip-input" value="0.00" step="0.50" min="0"></span>
                     </div>
-                    <div style="display:flex; justify-content:space-between; font-weight:800; font-size: 1.5rem;">
-                        <span>Total</span>
-                        <span style="color:#d63638;"><?php echo $currency; ?><span id="fd-total">0.00</span></span>
+
+                    <div class="fd-summary-row total-row">
+                        <span>Total Due</span>
+                        <span style="color:#d63638;"><?php echo $currency; ?><span id="fd-total-due">0.00</span></span>
                     </div>
-                    <a href="#" class="fd-checkout-btn" id="fd-checkout-trigger">
-                        <?php echo $is_actually_open ? 'Confirm Order' : 'Place Pre-Order'; ?>
-                    </a>
                 </div>
+
+                <a href="#" class="fd-checkout-btn" id="fd-checkout-trigger">
+                    <?php echo $is_actually_open ? 'Confirm Order' : 'Place Pre-Order'; ?>
+                </a>
             </div>
         </div>
     </div>
@@ -393,7 +412,10 @@ function fd_food_items_shortcode() {
 <script>
 jQuery(document).ready(function($){
     let cart = JSON.parse(localStorage.getItem('fd_cart_save')) || [];
-    const deliveryFee = parseFloat("<?php echo $saved_delivery_fee; ?>") || 0;
+    const delFee = parseFloat("<?php echo $saved_delivery_fee; ?>") || 0;
+    const srvFee = parseFloat("<?php echo $saved_service_fee; ?>") || 0;
+    const bagFee = parseFloat("<?php echo $saved_bag_fee; ?>") || 0;
+    const resDiscount = parseFloat("<?php echo $saved_discount; ?>") || 0;
     const currency = "<?php echo $currency; ?>";
     const isLoggedIn = <?php echo $is_logged_in; ?>;
     const isActuallyOpen = <?php echo $is_actually_open ? 'true' : 'false'; ?>;
@@ -404,7 +426,7 @@ jQuery(document).ready(function($){
         let subtotal = 0;
 
         if(cart.length === 0) {
-            container.html('<div style="color:#bbb; text-align:center; padding: 30px 0;">Empty Cart</div>');
+            container.html('<div style="color:#bbb; text-align:center; padding: 20px 0;">Your cart is empty</div>');
             $('#fd-checkout-trigger').css({'opacity': '0.5', 'pointer-events': 'none'});
         } else {
             $('#fd-checkout-trigger').css({'opacity': '1', 'pointer-events': 'auto'});
@@ -415,10 +437,10 @@ jQuery(document).ready(function($){
             subtotal += rowTotal;
             container.append(`
                 <div class="fd-cart-item">
-                    <button class="fd-delete" data-index="${index}" style="color:#ff4d4d; background:none; border:none; float:right; cursor:pointer;">
-                        <span class="dashicons dashicons-trash"></span>
-                    </button>
-                    <div style="font-weight:700; color:#1a1a1a;">${item.name}</div>
+                    <div style="display:flex; justify-content:space-between; font-weight:700;">
+                        <span>${item.name}</span>
+                        <button class="fd-delete" data-index="${index}" style="color:#ff4d4d; background:none; border:none; cursor:pointer;"><span class="dashicons dashicons-trash"></span></button>
+                    </div>
                     <div style="display:flex; align-items:center; gap:12px; margin-top:5px;">
                         <button class="fd-minus" data-index="${index}"><span class="dashicons dashicons-minus"></span></button>
                         <span style="font-weight:800;">${item.qty}</span>
@@ -430,18 +452,22 @@ jQuery(document).ready(function($){
         });
 
         let isDelivery = $('input[name="order_type"]:checked').val() === 'delivery';
-        if(isDelivery && cart.length > 0) {
-            subtotal += deliveryFee;
-            $('#fd-fee-wrap').show();
-        } else {
-            $('#fd-fee-wrap').hide();
-        }
+        let tip = parseFloat($('#fd-tip-amount').val()) || 0;
+        
+        $('#br-subtotal').text(subtotal.toFixed(2));
+        
+        let orderTotal = Math.max(0, subtotal - resDiscount);
+        $('#br-order-total').text(orderTotal.toFixed(2));
+        
+        if(!isDelivery) $('#fd-delivery-row').hide(); else $('#fd-delivery-row').show();
 
-        $('#fd-total').text(subtotal.toFixed(2));
+        let currentDel = isDelivery ? delFee : 0;
+        let totalDue = subtotal > 0 ? (orderTotal + srvFee + currentDel + bagFee + tip) : 0;
+
+        $('#fd-total-due').text(totalDue.toFixed(2));
         localStorage.setItem('fd_cart_save', JSON.stringify(cart));
     }
 
-    // Search Logic
     $('#fd-menu-search').on('keyup', function() {
         let val = $(this).val().toLowerCase();
         $('.fd-food-card').each(function() {
@@ -453,7 +479,6 @@ jQuery(document).ready(function($){
         });
     });
 
-    // Add to Cart
     $(document).on('click', '.order-btn', function() {
         const name = $(this).data('name'), price = parseFloat($(this).data('price'));
         const existing = cart.find(i => i.name === name);
@@ -468,16 +493,13 @@ jQuery(document).ready(function($){
         updateCart();
     });
     $(document).on('click', '.fd-delete', function() { cart.splice($(this).data('index'), 1); updateCart(); });
-    $('input[name="order_type"]').on('change', updateCart);
+    
+    $('input[name="order_type"], #fd-tip-amount').on('change input', updateCart);
 
-    // Checkout Trigger
     $(document).on('click', '#fd-checkout-trigger', function(e) {
         e.preventDefault();
-        
-        // 1. Check if Cart is empty
         if(cart.length === 0) return;
 
-        // 2. Check if Time is selected (Required for Pre-Order)
         const selectedTime = $('#fd-scheduled-time').val();
         if(!isActuallyOpen && !selectedTime) {
             alert('Please select a requested time for your pre-order.');
@@ -485,11 +507,8 @@ jQuery(document).ready(function($){
             return;
         }
         
-        // 3. Save details for Checkout page
         localStorage.setItem('fd_scheduled_time', selectedTime);
         localStorage.setItem('fd_order_mode', isActuallyOpen ? 'Live' : 'Pre-Order');
-        
-        // 4. Redirect to login or checkout
         window.location.href = !isLoggedIn ? "<?php echo esc_url($login_url); ?>?redirect_to=" + encodeURIComponent(window.location.href) : "<?php echo esc_url( home_url('/checkout') ); ?>";
     });
 

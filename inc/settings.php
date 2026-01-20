@@ -2,6 +2,7 @@
 /**
  * RESTAURANT OPERATIONS ENGINE
  * Includes: Global Status Logic, Admin Dashboard, and Frontend Modal
+ * Updated: All labels unified design
  */
 
 // --- 1. THE LOGIC ENGINE ---
@@ -24,14 +25,12 @@ if ( ! function_exists( 'get_afd_restaurant_status' ) ) {
         $open_ts      = strtotime($day_settings['open']);
         $close_ts     = strtotime($day_settings['close']);
 
-        // Handle overnight schedules (e.g., 18:00 - 02:00)
         $is_open = ($close_ts < $open_ts) 
             ? ($current_ts >= $open_ts || $current_ts <= $close_ts) 
             : ($current_ts >= $open_ts && $current_ts <= $close_ts);
 
         if (!$is_open) return ['is_open' => false, 'status' => 'closed', 'message' => $closed_msg];
 
-        // SMART 30 Min Warning Logic
         if ($current_ts >= ($close_ts - 1800) && $current_ts < $close_ts) {
             $minutes_left = ceil(($close_ts - $current_ts) / 60);
             $final_warning = str_replace('%min%', $minutes_left, $warning_msg);
@@ -43,7 +42,6 @@ if ( ! function_exists( 'get_afd_restaurant_status' ) ) {
 }
 
 // --- 2. THE FRONTEND MODAL ---
-// You can call this function in your footer or hook it: add_action('wp_footer', 'afd_frontend_closed_modal');
 function afd_frontend_closed_modal() {
     if ( is_front_page() && function_exists('get_afd_restaurant_status') ) {
         $store_status = get_afd_restaurant_status(); 
@@ -59,7 +57,7 @@ function afd_frontend_closed_modal() {
                 <div class="afd-modal-box">
                     <div class="afd-modal-header">
                         <div class="closed-icon" style="background: #f59e0b; width: 50px; height: 50px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 15px; font-size: 24px;">🕒</div>
-                        <h2 style="margin:0;"><?php esc_html_e( "We're Currently Closed", 'text-domain' ); ?></h2>
+                        <h2 style="margin:0; text-align: center;"><?php esc_html_e( "We're Currently Closed", 'text-domain' ); ?></h2>
                     </div>
                     <div class="afd-modal-body" style="padding: 20px; text-align: center;">
                         <p class="main-msg" style="font-weight: 600; color: #1e293b;"><?php echo nl2br( esc_html( $store_status['message'] ) ); ?></p>
@@ -95,7 +93,6 @@ function afd_frontend_closed_modal() {
                 @keyframes afdPop { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
             </style>
             <script>
-                // Show modal only if not dismissed in current session
                 document.addEventListener('DOMContentLoaded', function() {
                     if (!sessionStorage.getItem('afd_modal_dismissed')) {
                         document.getElementById('afd-closed-modal').style.display = 'flex';
@@ -113,12 +110,14 @@ function afd_frontend_closed_modal() {
 // --- 3. THE ADMIN SETTINGS PAGE ---
 function fd_settings_tab() {
     if (isset($_POST['afd_save_settings'])) {
-        // Security check
         check_admin_referer('afd_settings_nonce_action', 'afd_settings_nonce');
 
         update_option('afd_status_message', sanitize_textarea_field($_POST['afd_status_message']));
         update_option('afd_warning_message', sanitize_textarea_field($_POST['afd_warning_message']));
         update_option('afd_delivery_charge', sanitize_text_field($_POST['afd_delivery_charge']));
+        update_option('afd_service_charge', sanitize_text_field($_POST['afd_service_charge']));
+        update_option('afd_bag_charge', sanitize_text_field($_POST['afd_bag_charge']));
+        update_option('afd_restaurant_discount', sanitize_text_field($_POST['afd_restaurant_discount'])); 
         update_option('afd_cooking_time', sanitize_text_field($_POST['afd_cooking_time'])); 
         
         $new_schedule = [];
@@ -139,6 +138,9 @@ function fd_settings_tab() {
     $message         = get_option('afd_status_message', 'Sorry, we are currently closed!');
     $warning_msg     = get_option('afd_warning_message', 'Hurry! We are closing in %min% minutes.');
     $delivery_charge = get_option('afd_delivery_charge', '0.00');
+    $service_charge  = get_option('afd_service_charge', '0.00');
+    $bag_charge      = get_option('afd_bag_charge', '0.00');
+    $discount_fixed  = get_option('afd_restaurant_discount', '0.00'); 
     $cooking_time    = get_option('afd_cooking_time', '20-30');
     $status_info     = get_afd_restaurant_status();
     $days_of_week    = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -216,11 +218,36 @@ function fd_settings_tab() {
                             <span class="dashicons dashicons-money-alt"></span>
                             <h2>Financials & Estimations</h2>
                         </div>
+                        
                         <div class="input-field">
                             <label>Delivery Charge (£)</label>
                             <div class="currency-input">
                                 <span class="currency-symbol">£</span>
                                 <input type="text" name="afd_delivery_charge" value="<?php echo esc_attr($delivery_charge); ?>" placeholder="0.00">
+                            </div>
+                        </div>
+
+                        <div class="input-field" style="margin-top: 15px;">
+                            <label>Service Charge (£)</label>
+                            <div class="currency-input">
+                                <span class="currency-symbol">£</span>
+                                <input type="text" name="afd_service_charge" value="<?php echo esc_attr($service_charge); ?>" placeholder="0.00">
+                            </div>
+                        </div>
+
+                        <div class="input-field" style="margin-top: 15px;">
+                            <label>Bag Charge (£)</label>
+                            <div class="currency-input">
+                                <span class="currency-symbol">£</span>
+                                <input type="text" name="afd_bag_charge" value="<?php echo esc_attr($bag_charge); ?>" placeholder="0.00">
+                            </div>
+                        </div>
+
+                        <div class="input-field" style="margin-top: 15px;">
+                            <label>Restaurant Discount (£)</label>
+                            <div class="currency-input">
+                                <span class="currency-symbol">£</span>
+                                <input type="text" name="afd_restaurant_discount" value="<?php echo esc_attr($discount_fixed); ?>" placeholder="0.00">
                             </div>
                         </div>
 
@@ -296,6 +323,7 @@ function fd_settings_tab() {
         .currency-input { position: relative; display: flex; align-items: center; }
         .currency-symbol { position: absolute; left: 12px; font-weight: 700; color: #64748b; }
         .currency-input input { width: 100%; padding: 8px 8px 8px 28px; border: 1px solid #cbd5e1; border-radius: 8px; font-weight: 600; }
+        label { display: block; font-weight: 600; color: #1e293b; margin-bottom: 5px; font-size: 13px; }
         textarea { width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; font-size: 13px; resize: none; transition: 0.2s; }
         .afd-save-button { width: 100%; padding: 14px; background: #2271b1; color: #fff; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: 0.2s; }
         .afd-save-button:hover { background: #135e96; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(34, 113, 177, 0.2); }

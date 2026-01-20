@@ -257,25 +257,20 @@ add_action('admin_menu', function(){
 });
 
 /*--------------------------------------------------------------
-# 1. Database Table Creation (Force-Fix Version)
+# 1. Database Table Creation (Force-Fix + Sync Version)
 --------------------------------------------------------------*/
 function afd_create_orders_table() {
     global $wpdb;
-    $table_name = $wpdb->prefix . 'afd_food_orders'; 
+    $table_name = $wpdb->prefix . 'afd_food_orders';
     $charset_collate = $wpdb->get_charset_collate();
 
-    // 1. Check if delay_message column exists, if not, add it manually
-    $column = $wpdb->get_results($wpdb->prepare("SHOW COLUMNS FROM `$table_name` LIKE %s", 'delay_message'));
-    if (empty($column)) {
-        $wpdb->query("ALTER TABLE `$table_name` ADD `delay_message` TEXT NOT NULL AFTER `scheduled_time`;");
-    }
-
-    // 2. Standard table creation/sync
+    // Base table create / sync
     $sql = "CREATE TABLE $table_name (
         id bigint(20) NOT NULL AUTO_INCREMENT,
-        display_id varchar(20) DEFAULT '' NOT NULL,
+        display_id varchar(20) NOT NULL,
         customer_id bigint(20) DEFAULT 0 NOT NULL,
         order_type varchar(50) DEFAULT '' NOT NULL,
+        payment_method varchar(30) DEFAULT 'cash' NOT NULL,
         full_name varchar(255) DEFAULT '' NOT NULL,
         email varchar(255) DEFAULT '' NOT NULL,
         phone varchar(50) DEFAULT '' NOT NULL,
@@ -285,71 +280,80 @@ function afd_create_orders_table() {
         delay_message text NOT NULL,
         items_json longtext NOT NULL,
         subtotal decimal(10,2) DEFAULT '0.00' NOT NULL,
+        service_fee decimal(10,2) DEFAULT '0.00' NOT NULL,
+        bag_fee decimal(10,2) DEFAULT '0.00' NOT NULL,
+        tip_amount decimal(10,2) DEFAULT '0.00' NOT NULL,
         delivery_fee decimal(10,2) DEFAULT '0.00' NOT NULL,
         total_price decimal(10,2) DEFAULT '0.00' NOT NULL,
         order_status varchar(20) DEFAULT 'pending' NOT NULL,
         order_date datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
-        PRIMARY KEY (id)
+        PRIMARY KEY (id),
+        UNIQUE KEY display_id (display_id)
     ) $charset_collate;";
 
-    require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
-    dbDelta( $sql );
+    require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+    dbDelta($sql);
 }
-// Run this on admin_init so it triggers the column check immediately
 add_action('admin_init', 'afd_create_orders_table');
 
 
 /*--------------------------------------------------------------
-# 2. Helper: Generate Next Sequential ID
+# 2. Helper: Generate Next Sequential Display ID
 --------------------------------------------------------------*/
 function afd_generate_unique_display_id() {
     global $wpdb;
     $table_name = $wpdb->prefix . 'afd_food_orders';
-    
-    $today_date = current_time('Y-m-d');
+
+    $today_date  = current_time('Y-m-d');
     $date_prefix = current_time('Ymd');
-    
-    $count_today = $wpdb->get_var($wpdb->prepare(
-        "SELECT COUNT(id) FROM $table_name WHERE DATE(order_date) = %s",
-        $today_date
-    ));
-    
+
+    $count_today = $wpdb->get_var(
+        $wpdb->prepare(
+            "SELECT COUNT(id) FROM $table_name WHERE DATE(order_date) = %s",
+            $today_date
+        )
+    );
+
     $new_sequence = intval($count_today) + 1;
-    
-    return $date_prefix . '-' . str_pad($new_sequence, 4, '0', STR_PAD_LEFT);
+
+    return $date_prefix . '-' . str_pad($new_sequence, 3, '0', STR_PAD_LEFT);
 }
 
 
 /*--------------------------------------------------------------
-# 3. Helper: Insert Custom Order (Supports Pre-Orders & Delay Msg)
+# 3. Helper: Insert Custom Order
+# (Supports Pre-Order, Delay Message, Payment Method)
 --------------------------------------------------------------*/
 function fd_insert_custom_order($data) {
     global $wpdb;
     $table_name = $wpdb->prefix . 'afd_food_orders';
 
-    // Generate the permanent ID
+    // Generate permanent display ID
     $permanent_id = afd_generate_unique_display_id();
 
-    // Determine Status: If time is not 'asap', it is a 'preorder'
-    $time_val = isset($data['scheduledTime']) ? $data['scheduledTime'] : 'asap';
-    $delay_msg = isset($data['delayMessage']) ? $data['delayMessage'] : ''; // ADDED THIS
+    $time_val   = isset($data['scheduledTime']) ? $data['scheduledTime'] : 'asap';
+    $delay_msg  = isset($data['delayMessage']) ? $data['delayMessage'] : '';
     $status_val = ($time_val === 'asap') ? 'pending' : 'preorder';
 
     $inserted = $wpdb->insert(
         $table_name,
         [
-            'display_id'     => $permanent_id, 
-            'customer_id'    => $data['user_id'],
-            'order_type'     => $data['orderType'],
-            'full_name'      => $data['fullName'],
-            'email'          => $data['email'],
-            'phone'          => $data['phone'],
-            'address'        => $data['address'],
-            'notes'          => $data['notes'],
-            'scheduled_time' => $time_val,
-            'delay_message'  => $delay_msg, // ADDED THIS
-            'items_json'     => json_encode($data['cart']), 
+            'display_id'     => $permanent_id,
+            'customer_id'    => intval($data['user_id']),
+            'order_type'     => sanitize_text_field($data['orderType']),
+            'payment_method' => sanitize_text_field($data['paymentMethod']),
+            'full_name'      => sanitize_text_field($data['fullName']),
+            'email'          => sanitize_email($data['email']),
+            'phone'          => sanitize_text_field($data['phone']),
+            'address'        => sanitize_textarea_field($data['address']),
+            'notes'          => sanitize_textarea_field($data['notes']),
+            'scheduled_time' => sanitize_text_field($time_val),
+            'delay_message'  => sanitize_textarea_field($delay_msg),
+            'items_json'     => wp_json_encode($data['cart']),
             'subtotal'       => floatval($data['subtotal']),
+            'service_fee'    => floatval($data['service_fee']),
+            'bag_fee'        => floatval($data['bag_fee']),
+            'tip_amount'     => floatval($data['tip']),
             'delivery_fee'   => floatval($data['delivery']),
             'total_price'    => floatval($data['total']),
             'order_status'   => $status_val,
@@ -359,6 +363,7 @@ function fd_insert_custom_order($data) {
             '%s', // display_id
             '%d', // customer_id
             '%s', // order_type
+            '%s', // payment_method
             '%s', // full_name
             '%s', // email
             '%s', // phone
@@ -368,6 +373,9 @@ function fd_insert_custom_order($data) {
             '%s', // delay_message
             '%s', // items_json
             '%f', // subtotal
+            '%f', // service_fee
+            '%f', // bag_fee
+            '%f', // tip_amount
             '%f', // delivery_fee
             '%f', // total_price
             '%s', // order_status
