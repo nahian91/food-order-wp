@@ -18,7 +18,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['fd_register_nonce'])) 
         $password   = $_POST['password'];
         $full_name  = sanitize_text_field($_POST['full_name']);
         $phone      = sanitize_text_field($_POST['phone']);
-        $address    = sanitize_textarea_field($_POST['address']);
+        
+        // New Address Fields
+        $flat_no    = sanitize_text_field($_POST['flat_no']);
+        $building   = sanitize_text_field($_POST['building']);
+        $door_no    = sanitize_text_field($_POST['door_no']);
+        $road_name  = sanitize_text_field($_POST['road_name']);
+        $address_gen = sanitize_textarea_field($_POST['address']);
+        $postcode   = sanitize_text_field($_POST['postcode']);
 
         // Validation
         if (username_exists($username)) $errors[] = "Username already taken.";
@@ -26,23 +33,34 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['fd_register_nonce'])) 
         if (email_exists($email)) $errors[] = "This email is already registered.";
         if (strlen($password) < 6) $errors[] = "Password must be at least 6 characters.";
         if (empty($phone)) $errors[] = "Phone number is required for delivery.";
+        if (empty($postcode)) $errors[] = "Postcode is required.";
 
         if (empty($errors)) {
             $user_id = wp_create_user($username, $password, $email);
             
             if (!is_wp_error($user_id)) {
-                // Save Advanced Fields
+                // Update User Profile
                 wp_update_user([
                     'ID' => $user_id,
                     'display_name' => $full_name,
                     'first_name'   => $full_name
                 ]);
                 
-                // Store Phone and Address in User Meta (Usable in Checkout)
+                // Store Advanced Fields in User Meta
                 update_user_meta($user_id, 'billing_phone', $phone);
-                update_user_meta($user_id, 'billing_address_1', $address);
+                update_user_meta($user_id, 'billing_postcode', $postcode);
+                
+                // Concatenate detailed address for standard "Address 1" field
+                $full_address_string = "Flat $flat_no, $building, Door $door_no, $road_name. $address_gen";
+                update_user_meta($user_id, 'billing_address_1', $full_address_string);
+                
+                // Individual Custom Meta
+                update_user_meta($user_id, 'fd_flat_no', $flat_no);
+                update_user_meta($user_id, 'fd_building', $building);
+                update_user_meta($user_id, 'fd_door_no', $door_no);
+                update_user_meta($user_id, 'fd_road_name', $road_name);
                 update_user_meta($user_id, 'fd_user_phone', $phone);
-                update_user_meta($user_id, 'fd_user_address', $address);
+                update_user_meta($user_id, 'fd_user_postcode', $postcode);
                 
                 // Auto-login
                 wp_set_current_user($user_id);
@@ -64,8 +82,8 @@ get_header(); ?>
     .reg-card { background: #fff; border-radius: 20px; box-shadow: 0 15px 35px rgba(0,0,0,0.1); overflow: hidden; }
     .reg-info-side { background: #d63638; color: #fff; padding: 40px; display: flex; flex-direction: column; justify-content: center; }
     .reg-form-side { padding: 40px; }
-    .form-label { font-weight: 600; color: #444; font-size: 14px; margin-bottom: 8px; }
-    .form-control { height: 48px; border-radius: 10px; border: 1px solid #ddd; padding: 10px 15px; width: 100%; transition: 0.3s; }
+    .form-label { font-weight: 600; color: #444; font-size: 13px; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px;}
+    .form-control { height: 45px; border-radius: 8px; border: 1px solid #ddd; padding: 10px 15px; width: 100%; transition: 0.3s; font-size: 15px; }
     .form-control:focus { border-color: #d63638; box-shadow: 0 0 0 3px rgba(214, 54, 56, 0.1); outline: none; }
     .reg-btn { background: #d63638; color: #fff; border: none; width: 100%; padding: 15px; border-radius: 10px; font-weight: 700; font-size: 16px; margin-top: 20px; transition: 0.3s; cursor: pointer; }
     .reg-btn:hover { background: #b52a2c; transform: translateY(-2px); }
@@ -75,7 +93,7 @@ get_header(); ?>
 <div class="reg-wrapper">
     <div class="container">
         <div class="row justify-content-center">
-            <div class="col-lg-10">
+            <div class="col-lg-11">
                 <div class="reg-card">
                     <div class="row g-0">
                         <div class="col-md-4 reg-info-side d-none d-md-flex">
@@ -122,9 +140,38 @@ get_header(); ?>
                                     </div>
                                 </div>
 
+                                <hr class="my-4">
+                                <h6 class="mb-3">Delivery Details</h6>
+
+                                <div class="row">
+                                    <div class="col-md-4 mb-3">
+                                        <label class="form-label">Flat No.</label>
+                                        <input type="text" name="flat_no" class="form-control" placeholder="e.g. 4B">
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label class="form-label">Building Name</label>
+                                        <input type="text" name="building" class="form-control" placeholder="e.g. Sunset Heights">
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label class="form-label">Door / House No.</label>
+                                        <input type="text" name="door_no" class="form-control" placeholder="e.g. 102" required>
+                                    </div>
+                                </div>
+
+                                <div class="row">
+                                    <div class="col-md-8 mb-3">
+                                        <label class="form-label">Road Name</label>
+                                        <input type="text" name="road_name" class="form-control" placeholder="e.g. Baker Street" required>
+                                    </div>
+                                    <div class="col-md-4 mb-3">
+                                        <label class="form-label">Postcode</label>
+                                        <input type="text" name="postcode" class="form-control" placeholder="NW1 6XE" required>
+                                    </div>
+                                </div>
+
                                 <div class="mb-3">
-                                    <label class="form-label">Delivery Address</label>
-                                    <textarea name="address" class="form-control" rows="2" placeholder="House No, Street Name, City..." required></textarea>
+                                    <label class="form-label">Additional Address Info</label>
+                                    <textarea name="address" class="form-control" rows="2" placeholder="Nearby landmarks or special instructions..."></textarea>
                                 </div>
 
                                 <div class="mb-3">

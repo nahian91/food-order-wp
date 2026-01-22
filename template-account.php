@@ -37,18 +37,45 @@ if (isset($_GET['action']) && $_GET['action'] === 'reorder' && isset($_GET['orde
     }
 }
 
-// 3. PROFILE UPDATES
+// 3. PROFILE UPDATES (Updated with detailed address fields)
 if (isset($_POST['update_profile']) && wp_verify_nonce($_POST['profile_nonce'], 'update_user_profile')) {
-    wp_update_user(['ID' => $user_id, 'first_name' => sanitize_text_field($_POST['first_name']), 'last_name' => sanitize_text_field($_POST['last_name']), 'display_name' => sanitize_text_field($_POST['full_name'])]);
-    update_user_meta($user_id, 'phone', sanitize_text_field($_POST['phone']));
-    update_user_meta($user_id, 'address', sanitize_textarea_field($_POST['address']));
+    wp_update_user([
+        'ID' => $user_id, 
+        'first_name' => sanitize_text_field($_POST['first_name']), 
+        'last_name' => sanitize_text_field($_POST['last_name']), 
+        'display_name' => sanitize_text_field($_POST['first_name'] . ' ' . $_POST['last_name'])
+    ]);
+    
+    // Detailed fields
+    $phone     = sanitize_text_field($_POST['phone']);
+    $flat_no   = sanitize_text_field($_POST['flat_no']);
+    $building  = sanitize_text_field($_POST['building']);
+    $door_no   = sanitize_text_field($_POST['door_no']);
+    $road_name = sanitize_text_field($_POST['road_name']);
+    $postcode  = sanitize_text_field($_POST['postcode']);
+    $address   = sanitize_textarea_field($_POST['address']);
+
+    update_user_meta($user_id, 'phone', $phone);
+    update_user_meta($user_id, 'fd_user_phone', $phone);
+    update_user_meta($user_id, 'fd_flat_no', $flat_no);
+    update_user_meta($user_id, 'fd_building', $building);
+    update_user_meta($user_id, 'fd_door_no', $door_no);
+    update_user_meta($user_id, 'fd_road_name', $road_name);
+    update_user_meta($user_id, 'fd_user_postcode', $postcode);
+    update_user_meta($user_id, 'address', $address); // The additional info field
+    
+    // Sync for Checkout
+    $full_addr = "Flat $flat_no, $building, Door $door_no, $road_name. $address";
+    update_user_meta($user_id, 'billing_address_1', $full_addr);
+    update_user_meta($user_id, 'billing_postcode', $postcode);
+    update_user_meta($user_id, 'billing_phone', $phone);
+
     $success_msg = 'Profile updated successfully!';
 }
 
-// 4. DATA FETCHING
+// 4. DATA FETCHING (Updated to define variables for the form)
 $all_orders = $wpdb->get_results($wpdb->prepare("SELECT * FROM $table_name WHERE customer_id = %d ORDER BY order_date DESC", $user_id));
 
-// FIND ACTIVE ORDER (Only show if NOT completed/delivered)
 $live_order = null;
 if($all_orders){
     foreach($all_orders as $order){
@@ -60,7 +87,13 @@ if($all_orders){
     }
 }
 
-$user_phone   = get_user_meta($user_id, 'phone', true);
+// Define variables to avoid "Undefined variable" warnings
+$user_phone   = get_user_meta($user_id, 'fd_user_phone', true);
+$flat_no      = get_user_meta($user_id, 'fd_flat_no', true);
+$building     = get_user_meta($user_id, 'fd_building', true);
+$door_no      = get_user_meta($user_id, 'fd_door_no', true);
+$road_name    = get_user_meta($user_id, 'fd_road_name', true);
+$postcode     = get_user_meta($user_id, 'fd_user_postcode', true);
 $user_address = get_user_meta($user_id, 'address', true);
 ?>
 
@@ -134,16 +167,9 @@ $user_address = get_user_meta($user_id, 'address', true);
                     <div class="tab-pane fade show active" id="tab-dash">
     <?php if ($live_order) : 
         $st = strtolower($live_order->order_status);
-        
-        /**
-         * TIMER SYNC LOGIC
-         * We take the 'scheduled_time' (which you now save as raw minutes, e.g., 67)
-         * and add it to the current time to create the live countdown.
-         */
         $minutes_remaining = intval($live_order->scheduled_time);
         $expiry = current_time('timestamp') + ($minutes_remaining * 60);
         
-        // Calculate Progress Bar Width
         $prog = "5%"; 
         if($st == 'cooking') $prog = "40%";
         if($st == 'rider') $prog = "75%";
@@ -271,22 +297,45 @@ $user_address = get_user_meta($user_id, 'address', true);
 
                     <div class="tab-pane fade" id="tab-profile">
                         <h4 class="fw-bold mb-4">Account Details</h4>
+                        <?php if($success_msg) echo "<div class='alert alert-success mb-4 border-0 rounded-3'>$success_msg</div>"; ?>
                         <form method="post" class="row g-3">
                             <?php wp_nonce_field('update_user_profile', 'profile_nonce'); ?>
                             <div class="col-md-6">
                                 <label class="small fw-bold mb-1">First Name</label>
-                                <input type="text" name="first_name" class="form-control rounded-3 py-2" value="<?php echo esc_attr($current_user->first_name); ?>">
+                                <input type="text" name="first_name" class="form-control rounded-3 py-2" value="<?php echo esc_attr($current_user->first_name); ?>" required>
                             </div>
                             <div class="col-md-6">
                                 <label class="small fw-bold mb-1">Last Name</label>
-                                <input type="text" name="last_name" class="form-control rounded-3 py-2" value="<?php echo esc_attr($current_user->last_name); ?>">
+                                <input type="text" name="last_name" class="form-control rounded-3 py-2" value="<?php echo esc_attr($current_user->last_name); ?>" required>
                             </div>
                             <div class="col-12">
                                 <label class="small fw-bold mb-1">Phone Number</label>
-                                <input type="text" name="phone" class="form-control rounded-3 py-2" value="<?php echo esc_attr($user_phone); ?>">
+                                <input type="text" name="phone" class="form-control rounded-3 py-2" value="<?php echo esc_attr($user_phone); ?>" required>
                             </div>
+                            
+                            <div class="col-md-4">
+                                <label class="small fw-bold mb-1">Flat No.</label>
+                                <input type="text" name="flat_no" class="form-control rounded-3 py-2" value="<?php echo esc_attr($flat_no); ?>">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="small fw-bold mb-1">Building</label>
+                                <input type="text" name="building" class="form-control rounded-3 py-2" value="<?php echo esc_attr($building); ?>">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="small fw-bold mb-1">Door No.</label>
+                                <input type="text" name="door_no" class="form-control rounded-3 py-2" value="<?php echo esc_attr($door_no); ?>" required>
+                            </div>
+                            <div class="col-md-8">
+                                <label class="small fw-bold mb-1">Road Name</label>
+                                <input type="text" name="road_name" class="form-control rounded-3 py-2" value="<?php echo esc_attr($road_name); ?>" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="small fw-bold mb-1">Postcode</label>
+                                <input type="text" name="postcode" class="form-control rounded-3 py-2" value="<?php echo esc_attr($postcode); ?>" required>
+                            </div>
+
                             <div class="col-12">
-                                <label class="small fw-bold mb-1">Delivery Address</label>
+                                <label class="small fw-bold mb-1">Additional Address Info</label>
                                 <textarea name="address" class="form-control rounded-3" rows="3"><?php echo esc_textarea($user_address); ?></textarea>
                             </div>
                             <div class="col-12 mt-4">
@@ -323,7 +372,6 @@ $user_address = get_user_meta($user_id, 'address', true);
         setInterval(updateTimer, 1000);
         updateTimer();
         
-        // Refresh every 30s only if tracking an order
         if($('.stepper-container').length > 0) {
             setTimeout(function(){ location.reload(); }, 30000);
         }
