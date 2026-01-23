@@ -1,7 +1,7 @@
 <?php
 /**
  * Final View Order - Complete Feature Set
- * Includes: Live Kitchen Timer, Address Mapping, and Charges Summary.
+ * Includes: Live Kitchen Timer, Address Mapping, and Charges Summary with Tips & Email.
  */
 if (!defined('ABSPATH')) exit;
 
@@ -31,13 +31,16 @@ $meta_building = get_user_meta($customer_id, 'fd_building', true);
 $meta_door     = get_user_meta($customer_id, 'fd_door_no', true);
 $meta_road     = get_user_meta($customer_id, 'fd_road_name', true);
 $meta_postcode = get_user_meta($customer_id, 'fd_user_postcode', true);
-$extra_info    = get_user_meta($customer_id, 'address', true);
 
-// Get Charges
+// Get Live Setting for Discount
+$rest_discount_pct = (float)get_option('afd_restaurant_discount', '0.00');
+$discount_amount   = ($order->subtotal * $rest_discount_pct) / 100;
+
+// Get Charges from Order Table
 $delivery_fee  = (float)$order->delivery_fee;
-$service_fee   = (float)get_option('afd_service_charge', '0.00');
-$bag_fee       = (float)get_option('afd_bag_charge', '0.00');
-$rest_discount = (float)get_option('afd_restaurant_discount', '0.00');
+$service_fee   = (float)$order->service_fee;
+$bag_fee       = (float)$order->bag_fee;
+$tip_amount    = (float)$order->tip_amount;
 $prep_mins     = intval(get_option('afd_cooking_time', 20));
 
 // Timer Calculation (Anchor: order_date)
@@ -61,20 +64,11 @@ $nav_addr = ($meta_flat ? "Flat $meta_flat, " : "") . ($meta_door ? "$meta_door 
     .view-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 25px; }
     .id-badge-large { background: #fff; border: 1px solid var(--res-border); padding: 12px 24px; border-radius: 12px; display: inline-block; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
     
-    /* Timer Styles */
     .timer-container { display: flex; align-items: center; gap: 15px; margin-top: 15px; }
     .view-live-timer { 
-        background: #fff8e5; 
-        border: 2px solid #ffb900; 
-        color: #c45100; 
-        padding: 8px 20px; 
-        border-radius: 8px; 
-        font-family: monospace; 
-        font-size: 20px; 
-        font-weight: 900; 
-        display: inline-flex; 
-        align-items: center; 
-        gap: 8px; 
+        background: #fff8e5; border: 2px solid #ffb900; color: #c45100; padding: 8px 20px; 
+        border-radius: 8px; font-family: monospace; font-size: 20px; font-weight: 900; 
+        display: inline-flex; align-items: center; gap: 8px; 
     }
     .view-live-timer.timer-late { background: #fcf0f1; color: #d63638; border-color: #d63638; animation: afd-pulse 1s infinite; }
     
@@ -168,10 +162,23 @@ $nav_addr = ($meta_flat ? "Flat $meta_flat, " : "") . ($meta_door ? "$meta_door 
 
                 <div class="summary-list">
                     <div class="summary-line"><label>Subtotal (£)</label><span>£<?php echo number_format($order->subtotal, 2); ?></span></div>
-                    <div class="summary-line"><label>Delivery Charge (£)</label><span>£<?php echo number_format($delivery_fee, 2); ?></span></div>
+                    
+                    <?php if($rest_discount_pct > 0): ?>
+                    <div class="summary-line" style="color:var(--res-success);"><label>Restaurant Discount (<?php echo $rest_discount_pct; ?>%)</label><span>-£<?php echo number_format($discount_amount, 2); ?></span></div>
+                    <?php endif; ?>
+
                     <div class="summary-line"><label>Service Charge (£)</label><span>£<?php echo number_format($service_fee, 2); ?></span></div>
+                    
+                    <?php if($order_type === 'delivery'): ?>
+                    <div class="summary-line"><label>Delivery Charge (£)</label><span>£<?php echo number_format($delivery_fee, 2); ?></span></div>
+                    <?php endif; ?>
+
                     <div class="summary-line"><label>Bag Charge (£)</label><span>£<?php echo number_format($bag_fee, 2); ?></span></div>
-                    <div class="summary-line" style="color:#d63638;"><label>Restaurant Discount (£)</label><span>-£<?php echo number_format($rest_discount, 2); ?></span></div>
+                    
+                    <?php if($tip_amount > 0): ?>
+                    <div class="summary-line" style="color:var(--res-blue);"><label>Driver Tip (£)</label><span>£<?php echo number_format($tip_amount, 2); ?></span></div>
+                    <?php endif; ?>
+
                     <div class="summary-line grand-total"><label>Grand Total</label><span>£<?php echo number_format($order->total_price, 2); ?></span></div>
                 </div>
             </div>
@@ -192,6 +199,7 @@ $nav_addr = ($meta_flat ? "Flat $meta_flat, " : "") . ($meta_door ? "$meta_door 
                 <div class="view-card-body">
                     <div class="info-block"><label>Full Name</label><p><?php echo esc_html($order->full_name); ?></p></div>
                     <div class="info-block"><label>Phone Number</label><p style="color:var(--res-red); font-size:18px; font-weight:800;"><?php echo esc_html($order->phone); ?></p></div>
+                    <div class="info-block"><label>Email Address</label><p><?php echo esc_html($order->email); ?></p></div>
                     
                     <hr style="border:0; border-top:1px solid #eee; margin:20px 0;">
 
@@ -214,19 +222,10 @@ $nav_addr = ($meta_flat ? "Flat $meta_flat, " : "") . ($meta_door ? "$meta_door 
                             <div class="addr-row"><span>Building</span> <span><?php echo esc_html($meta_building ?: '-'); ?></span></div>
                             <div class="addr-row"><span>Door No.</span> <span><?php echo esc_html($meta_door ?: '-'); ?></span></div>
                             <div class="addr-row"><span>Road Name</span> <span><?php echo esc_html($meta_road ?: '-'); ?></span></div>
-                            
                             <div class="addr-row" style="border:0; margin-top:10px;">
                                 <span>Postcode</span> 
                                 <span style="font-size:18px; color:var(--res-red); font-weight:900;"><?php echo strtoupper(esc_html($meta_postcode ?: $order->postcode)); ?></span>
                             </div>
-                            
-                            <?php if(!empty($extra_info)): ?>
-                                <div style="margin-top:10px; padding-top:10px; border-top:1px dashed #cbd5e1;">
-                                    <small style="color:#64748b; display:block;">Additional Info:</small>
-                                    <div style="font-size:13px; font-weight:600;"><?php echo nl2br(esc_html($extra_info)); ?></div>
-                                </div>
-                            <?php endif; ?>
-
                             <button onclick="copyToClipboard('<?php echo esc_js($nav_addr); ?>')" class="btn-action" style="width:100%; margin-top:15px; justify-content:center;">
                                 <span class="dashicons dashicons-admin-page"></span> Copy for Navigation
                             </button>
@@ -253,7 +252,6 @@ $nav_addr = ($meta_flat ? "Flat $meta_flat, " : "") . ($meta_door ? "$meta_door 
 </div>
 
 <script>
-// Live Countdown Logic
 jQuery(document).ready(function($){
     var serverTime = <?php echo $server_now; ?>;
     var browserTime = Math.floor(Date.now() / 1000);
@@ -262,11 +260,9 @@ jQuery(document).ready(function($){
     function updateViewClock() {
         var now = Math.floor(Date.now() / 1000) + timeGap;
         var timerEl = $('#view-timer-js');
-        
         if (timerEl.length) {
             var expiry = parseInt(timerEl.data('expiry'));
             var diff = expiry - now;
-
             if (diff <= 0) {
                 timerEl.addClass('timer-late').find('.time-string').text("LATE");
             } else {
@@ -276,7 +272,6 @@ jQuery(document).ready(function($){
             }
         }
     }
-    
     setInterval(updateViewClock, 1000);
     updateViewClock();
 });

@@ -14,12 +14,11 @@ if (isset($_GET['action']) && $_GET['action'] === 'print' && $_GET['type'] === '
     $items = json_decode($order->items_json, true);
     $payment_method = !empty($order->payment_method) ? strtoupper($order->payment_method) : 'NOT SPECIFIED';
 
-    // --- FIX: ADDRESS FETCHING LOGIC ---
+    // --- ADDRESS FETCHING LOGIC ---
     $u_id = $order->customer_id;
     $full_address = '';
 
     if ($u_id) {
-        // Try to get SaaS detailed components
         $u_flat     = get_user_meta($u_id, 'fd_flat_no', true);
         $u_building = get_user_meta($u_id, 'fd_building', true);
         $u_door     = get_user_meta($u_id, 'fd_door_no', true);
@@ -36,15 +35,26 @@ if (isset($_GET['action']) && $_GET['action'] === 'print' && $_GET['type'] === '
         $full_address = implode(', ', $address_parts);
     }
 
-    // FALLBACK: If user meta is empty or it's a guest, use the address stored in the order table
     if (empty($full_address) && !empty($order->address)) {
         $full_address = $order->address;
     }
 
-    $rest_discount = get_option('afd_restaurant_discount', '0.00');
-    $service_fee   = get_option('afd_service_charge', '0.00');
-    $bag_fee       = get_option('afd_bag_charge', '0.00');
-    $tips          = isset($order->tips) ? $order->tips : '0.00'; 
+    // --- FINANCIAL CALCULATIONS (Dynamic Discount) ---
+    $items_subtotal = 0;
+    if(is_array($items)){
+        foreach($items as $item){ 
+            $items_subtotal += (floatval($item['price']) * intval($item['qty'])); 
+        }
+    }
+    $service_fee   = (float)get_option('afd_service_charge', '0.00');
+    $bag_fee       = (float)get_option('afd_bag_charge', '0.00');
+    $delivery_fee  = floatval($order->delivery_fee);
+    $tips          = isset($order->tip_amount) ? floatval($order->tip_amount) : 0.00; 
+
+    // Calculate actual discount based on final price in DB vs original costs
+    $gross_total = $items_subtotal + $service_fee + $bag_fee + $delivery_fee + $tips;
+    $dynamic_discount = $gross_total - floatval($order->total_price);
+
     ?>
     <!DOCTYPE html>
     <html>
@@ -71,10 +81,10 @@ if (isset($_GET['action']) && $_GET['action'] === 'print' && $_GET['type'] === '
             .type-badge { color: #000; font-size: 24px; font-weight: bold; margin-top: 5px; display: inline-block; }
             
             .customer-section { margin-bottom: 15px; line-height: 1.3; text-align: left; }
-            .cust-name { font-size: 22px; font-weight: 900; text-transform: uppercase; display: block; }
-            .cust-phone { font-size: 20px; font-weight: bold; display: block; margin: 3px 0; }
+            .cust-name { font-size: 24px; font-weight: 900; text-transform: uppercase; display: block; }
+            .cust-phone { font-size: 22px; font-weight: bold; display: block; margin: 3px 0; }
             .cust-addr-full { 
-                font-size: 19px; 
+                font-size: 22px; 
                 font-weight: 900; 
                 border: 2px solid #000; 
                 padding: 6px; 
@@ -91,10 +101,12 @@ if (isset($_GET['action']) && $_GET['action'] === 'print' && $_GET['type'] === '
             .item-price { font-size: 16px; text-align: right; width: 60px; font-weight: bold; }
             
             .summary-section { margin-top: 15px; border-top: 1px solid #000; padding-top: 10px; }
-            .summary-line { display: flex; justify-content: space-between; font-size: 16px; font-weight: bold; margin-bottom: 4px; }
+            .summary-line { display: flex; justify-content: space-between; font-size: 19px; font-weight: bold; margin-bottom: 4px; }
             .summary-line.bold-total { font-size: 22px; border-top: 2px solid #000; margin-top: 8px; padding-top: 5px; }
 
-            .notes-box { border: 2px solid #000; padding: 8px; margin-top: 15px; font-size: 19px; font-weight: bold; text-align: left; }
+            /* Notes Box Styling */
+            .notes-box { border: 2px solid #000; padding: 8px; margin-top: 10px; font-size: 22px; font-weight: bold; text-align: left; }
+            .notes-label { font-size: 16px; text-decoration: underline; display: block; margin-bottom: 3px; font-weight: 900; }
             
             .footer { text-align: center; margin-top: 10px; font-size: 12px; padding-bottom: 15mm; }
             
@@ -130,6 +142,27 @@ if (isset($_GET['action']) && $_GET['action'] === 'print' && $_GET['type'] === '
                 <?php endif; ?>
             </div>
 
+            <?php if (!empty($order->order_notes)) : // From Checkout (Customer) ?>
+                <div class="notes-box" style="border-style: dotted;">
+                    <span class="notes-label">CUSTOMER REQUEST (FROM CHECKOUT):</span>
+                    <?php echo esc_html($order->order_notes); ?>
+                </div>
+            <?php endif; ?>
+
+            <?php if (!empty($order->notes)) : // From Edit Order (Kitchen Internal) ?>
+                <div class="notes-box" style="background: #eee;">
+                    <span class="notes-label">KITCHEN NOTE:</span>
+                    <?php echo esc_html($order->notes); ?>
+                </div>
+            <?php endif; ?>
+
+            <?php if (!empty($order->delivery_notes)) : // From Edit Order (Driver) ?>
+                <div class="notes-box">
+                    <span class="notes-label">DELIVERY NOTE:</span>
+                    <?php echo esc_html($order->delivery_notes); ?>
+                </div>
+            <?php endif; ?>
+
             <table>
                 <thead>
                     <tr>
@@ -140,14 +173,14 @@ if (isset($_GET['action']) && $_GET['action'] === 'print' && $_GET['type'] === '
                 </thead>
                 <tbody>
                     <?php if(is_array($items)) : foreach($items as $item) : 
-                        $item_price = isset($item['price']) ? floatval($item['price']) : 0;
-                        $line_total = $item_price * intval($item['qty']);
+                        $item_p = isset($item['price']) ? floatval($item['price']) : 0;
+                        $line_total = $item_p * intval($item['qty']);
                     ?>
                         <tr class="item-row">
                             <td class="qty"><?php echo intval($item['qty']); ?>x</td>
                             <td class="item-name">
                                 <?php echo esc_html($item['name']); ?>
-                                <div style="font-size: 12px; font-weight: normal;">@ £<?php echo number_format($item_price, 2); ?></div>
+                                <div style="font-size: 12px; font-weight: normal;">@ £<?php echo number_format($item_p, 2); ?></div>
                             </td>
                             <td class="item-price">£<?php echo number_format($line_total, 2); ?></td>
                         </tr>
@@ -158,48 +191,41 @@ if (isset($_GET['action']) && $_GET['action'] === 'print' && $_GET['type'] === '
             <div class="summary-section">
                 <div class="summary-line">
                     <span>Subtotal</span>
-                    <span>£<?php echo number_format($order->subtotal, 2); ?></span>
+                    <span>£<?php echo number_format($items_subtotal, 2); ?></span>
                 </div>
+
+                <?php if($dynamic_discount > 0.01): ?>
                 <div class="summary-line">
                     <span>Restaurant Discount</span>
-                    <span>-£<?php echo number_format((float)$rest_discount, 2); ?></span>
+                    <span>-£<?php echo number_format((float)$dynamic_discount, 2); ?></span>
                 </div>
-                <div class="summary-line" style="border-bottom: 1px dashed #ccc; padding-bottom: 5px;">
-                    <span>Order Total</span>
-                    <span>£<?php echo number_format(($order->subtotal - (float)$rest_discount), 2); ?></span>
+                <?php endif; ?>
+
+                <div class="summary-line">
+                    <span>Service & Bag Fee</span>
+                    <span>£<?php echo number_format((float)($service_fee + $bag_fee), 2); ?></span>
                 </div>
-                <div class="summary-line" style="margin-top:5px;">
-                    <span>Service Charge</span>
-                    <span>£<?php echo number_format((float)$service_fee, 2); ?></span>
-                </div>
+                
                 <div class="summary-line">
                     <span>Delivery Charges</span>
-                    <span>£<?php echo number_format($order->delivery_fee, 2); ?></span>
+                    <span>£<?php echo number_format($delivery_fee, 2); ?></span>
                 </div>
-                <div class="summary-line">
-                    <span>Bag Charge</span>
-                    <span>£<?php echo number_format((float)$bag_fee, 2); ?></span>
-                </div>
+
                 <div class="summary-line">
                     <span>Tips</span>
                     <span>£<?php echo number_format((float)$tips, 2); ?></span>
                 </div>
+                
                 <div class="summary-line bold-total">
                     <span>TOTAL DUE</span>
                     <span>£<?php echo number_format($order->total_price, 2); ?></span>
                 </div>
+                
                 <div class="summary-line" style="margin-top: 10px; font-size: 18px;">
                     <span>METHOD:</span>
                     <span><?php echo esc_html($payment_method); ?></span>
                 </div>
             </div>
-
-            <?php if (!empty($order->order_notes)) : ?>
-                <div class="notes-box">
-                    <span style="font-size:14px; text-decoration:underline; display:block; margin-bottom:4px;">KITCHEN NOTES:</span>
-                    <?php echo esc_html($order->order_notes); ?>
-                </div>
-            <?php endif; ?>
 
             <div class="footer">
                 *** ORDER COPY ***<br>

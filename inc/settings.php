@@ -2,7 +2,7 @@
 /**
  * RESTAURANT OPERATIONS ENGINE
  * Includes: Global Status Logic, Admin Dashboard, and Frontend Modal
- * Updated: All labels unified design
+ * Updated: Discount field changed to Percentage (%)
  */
 
 // --- 1. THE LOGIC ENGINE ---
@@ -134,16 +134,16 @@ function fd_settings_tab() {
         echo '<div class="afd-sync-toast"><span class="dashicons dashicons-saved"></span> Settings synchronized successfully</div>';
     }
 
-    $schedule        = get_option('afd_schedule', []);
-    $message         = get_option('afd_status_message', 'Sorry, we are currently closed!');
-    $warning_msg     = get_option('afd_warning_message', 'Hurry! We are closing in %min% minutes.');
-    $delivery_charge = get_option('afd_delivery_charge', '0.00');
-    $service_charge  = get_option('afd_service_charge', '0.00');
-    $bag_charge      = get_option('afd_bag_charge', '0.00');
-    $discount_fixed  = get_option('afd_restaurant_discount', '0.00'); 
-    $cooking_time    = get_option('afd_cooking_time', '20-30');
-    $status_info     = get_afd_restaurant_status();
-    $days_of_week    = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    $schedule         = get_option('afd_schedule', []);
+    $message          = get_option('afd_status_message', 'Sorry, we are currently closed!');
+    $warning_msg      = get_option('afd_warning_message', 'Hurry! We are closing in %min% minutes.');
+    $delivery_charge  = get_option('afd_delivery_charge', '0.00');
+    $service_charge   = get_option('afd_service_charge', '0.00');
+    $bag_charge       = get_option('afd_bag_charge', '0.00');
+    $discount_percent = get_option('afd_restaurant_discount', '0'); 
+    $cooking_time     = get_option('afd_cooking_time', '20-30');
+    $status_info      = get_afd_restaurant_status();
+    $days_of_week     = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
     $badge_map = [
         'open'    => ['class' => 'badge-open', 'text' => '● LIVE: OPEN'],
@@ -244,10 +244,10 @@ function fd_settings_tab() {
                         </div>
 
                         <div class="input-field" style="margin-top: 15px;">
-                            <label>Restaurant Discount (£)</label>
+                            <label>Restaurant Discount (%)</label>
                             <div class="currency-input">
-                                <span class="currency-symbol">£</span>
-                                <input type="text" name="afd_restaurant_discount" value="<?php echo esc_attr($discount_fixed); ?>" placeholder="0.00">
+                                <input type="text" name="afd_restaurant_discount" value="<?php echo esc_attr($discount_percent); ?>" placeholder="0" style="padding-left: 12px; padding-right: 28px;">
+                                <span class="currency-symbol" style="left: auto; right: 12px;">%</span>
                             </div>
                         </div>
 

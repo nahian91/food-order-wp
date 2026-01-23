@@ -197,6 +197,7 @@ add_shortcode('food_categories', 'fd_dynamic_category_carousel_shortcode');
 /**
  * SHORTCODE: Main Food Ordering System (Menu + Cart)
  * Features: Live Status Integration, Pre-Order Mode, & Dynamic Scheduling
+ * Updated: Discount logic changed to Percentage (%)
  */
 function fd_food_items_shortcode() {
     wp_enqueue_style('dashicons');
@@ -211,7 +212,7 @@ function fd_food_items_shortcode() {
     $saved_delivery_fee = get_option('afd_delivery_charge', '0.00');
     $saved_service_fee  = get_option('afd_service_charge', '0.00');
     $saved_bag_fee      = get_option('afd_bag_charge', '0.00');
-    $saved_discount     = get_option('afd_restaurant_discount', '0.00');
+    $saved_discount     = get_option('afd_restaurant_discount', '0'); // Changed to integer/float for %
 
     // 2. FETCH DATA
     $items = get_posts([
@@ -380,7 +381,10 @@ function fd_food_items_shortcode() {
                 <div class="fd-summary-container">
                     <div class="fd-summary-row"><span>Subtotal</span><span><?php echo $currency; ?><span id="br-subtotal">0.00</span></span></div>
                     
-                    <div class="fd-summary-row"><span>Restaurant discount</span><span>-<?php echo $currency . number_format((float)$saved_discount, 2); ?></span></div>
+                    <div class="fd-summary-row">
+                        <span>Restaurant discount (<?php echo esc_html($saved_discount); ?>%)</span>
+                        <span>-<?php echo $currency; ?><span id="br-discount-value">0.00</span></span>
+                    </div>
                     
                     <div class="fd-summary-row" style="font-weight:700; color:#1a1a1a;"><span>Order total</span><span><?php echo $currency; ?><span id="br-order-total">0.00</span></span></div>
                     
@@ -415,7 +419,7 @@ jQuery(document).ready(function($){
     const delFee = parseFloat("<?php echo $saved_delivery_fee; ?>") || 0;
     const srvFee = parseFloat("<?php echo $saved_service_fee; ?>") || 0;
     const bagFee = parseFloat("<?php echo $saved_bag_fee; ?>") || 0;
-    const resDiscount = parseFloat("<?php echo $saved_discount; ?>") || 0;
+    const resDiscountPercent = parseFloat("<?php echo $saved_discount; ?>") || 0; // Interpreted as %
     const currency = "<?php echo $currency; ?>";
     const isLoggedIn = <?php echo $is_logged_in; ?>;
     const isActuallyOpen = <?php echo $is_actually_open ? 'true' : 'false'; ?>;
@@ -456,8 +460,13 @@ jQuery(document).ready(function($){
         
         $('#br-subtotal').text(subtotal.toFixed(2));
         
-        let orderTotal = Math.max(0, subtotal - resDiscount);
+        // --- NEW PERCENTAGE LOGIC ---
+        let calculatedDiscount = (subtotal * resDiscountPercent) / 100;
+        $('#br-discount-value').text(calculatedDiscount.toFixed(2));
+        
+        let orderTotal = Math.max(0, subtotal - calculatedDiscount);
         $('#br-order-total').text(orderTotal.toFixed(2));
+        // ----------------------------
         
         if(!isDelivery) $('#fd-delivery-row').hide(); else $('#fd-delivery-row').show();
 

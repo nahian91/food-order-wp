@@ -3,125 +3,251 @@
 Template Name: Checkout
 */
 
-// 1. HANDLE AJAX ORDER SUBMISSION
+/**
+ * 1. AJAX HANDLER: PROCESSING THE ORDER
+ * This section handles the background submission when the user clicks "Confirm Order"
+ */
 if (isset($_POST['fd_place_order'])) {
     header('Content-Type: application/json');
 
-    // Security Check
+    // Security Nonce Verification
     if (!isset($_POST['fd_nonce']) || !wp_verify_nonce($_POST['fd_nonce'], 'fd_place_order_action')) {
-        echo json_encode(['status' => 'error', 'message' => 'Security check failed. Please refresh.']);
+        echo json_encode(['status' => 'error', 'message' => 'Security check failed. Please refresh the page.']);
         exit;
     }
 
-    $data = json_decode(stripslashes($_POST['fd_place_order']), true);
+    $raw_data = stripslashes($_POST['fd_place_order']);
+    $data = json_decode($raw_data, true);
 
     if (!$data || empty($data['cart'])) {
-        echo json_encode(['status' => 'error', 'message' => 'Your cart is empty.']);
+        echo json_encode(['status' => 'error', 'message' => 'Your cart is empty or data is invalid.']);
         exit;
     }
 
+    // Prepare User ID
     $user_id = get_current_user_id() ?: 0;
-    
-    global $wpdb;
-    $table_name = $wpdb->prefix . 'afd_food_orders';
+    $data['user_id'] = $user_id;
 
-    // --- STEP A: GENERATE PERMANENT SEQUENTIAL ID ---
-    $today_date = current_time('Y-m-d');
-    $date_prefix = current_time('Ymd');
-    
-    $count_today = $wpdb->get_var($wpdb->prepare(
-        "SELECT COUNT(id) FROM $table_name WHERE DATE(order_date) = %s",
-        $today_date
-    ));
-    
-    $new_sequence = intval($count_today) + 1;
-    $permanent_id = $date_prefix . '-' . str_pad($new_sequence, 4, '0', STR_PAD_LEFT);
+    /**
+     * fd_insert_custom_order is your helper function in functions.php
+     * It maps the following keys to DB columns:
+     * subtotal, service_fee, bag_fee, tip, delivery, total
+     */
+    $order_display_id = fd_insert_custom_order($data);
 
-    // --- STEP B: PRE-ORDER LOGIC ---
-    $scheduled_time = isset($data['scheduledTime']) ? sanitize_text_field($data['scheduledTime']) : 'asap';
-    $initial_status = ($scheduled_time === 'asap') ? 'pending' : 'preorder';
-
-    // --- STEP C: DATABASE INSERTION ---
-    $inserted = $wpdb->insert(
-        $table_name,
-        [
-            'display_id'     => $permanent_id, 
-            'customer_id'    => $user_id,
-            'order_type'     => sanitize_text_field($data['orderType']),
-            'payment_method' => sanitize_text_field($data['paymentMethod']),
-            'full_name'      => sanitize_text_field($data['fullName']),
-            'email'          => sanitize_email($data['email']),
-            'phone'          => sanitize_text_field($data['phone']),
-            'address'        => sanitize_textarea_field($data['address']),
-            'notes'          => sanitize_textarea_field($data['notes']),
-            'scheduled_time' => $scheduled_time,
-            'items_json'     => json_encode($data['cart']), 
-            'subtotal'       => floatval($data['subtotal']),
-            'delivery_fee'   => floatval($data['delivery']),
-            'total_price'    => floatval($data['total']),
-            'order_status'   => $initial_status,
-            'order_date'     => current_time('mysql')
-        ],
-        ['%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%f', '%f', '%f', '%s', '%s']
-    );
-
-    if ($inserted) {
+    if ($order_display_id) {
+        // Update user meta for easier future checkouts
         if ($user_id > 0) {
             update_user_meta($user_id, 'phone', sanitize_text_field($data['phone']));
             if ($data['orderType'] === 'delivery') {
                 update_user_meta($user_id, 'address', sanitize_textarea_field($data['address']));
             }
         }
-        echo json_encode(['status' => 'success', 'order_id' => $permanent_id]);
+        echo json_encode(['status' => 'success', 'order_id' => $order_display_id]);
     } else {
-        echo json_encode(['status' => 'error', 'message' => 'DB Error: ' . $wpdb->last_error]);
+        echo json_encode(['status' => 'error', 'message' => 'Database error. Order could not be saved.']);
     }
     exit;
 }
 
 get_header();
 
+/**
+ * 2. DATA PREPARATION
+ */
 $u = wp_get_current_user();
-$user_id = $u->ID;
-$user_phone = get_user_meta($user_id, 'phone', true);
-$user_address = get_user_meta($user_id, 'address', true);
+$user_phone = get_user_meta($u->ID, 'phone', true);
+$user_address = get_user_meta($u->ID, 'address', true);
 
+// Get Global Settings from Admin
 $currency = '£';
 $base_delivery_fee = get_option('afd_delivery_charge', '0.00');
 $service_fee       = get_option('afd_service_charge', '0.00');
 $bag_fee           = get_option('afd_bag_charge', '0.00');
-$rest_discount     = get_option('afd_restaurant_discount', '0.00');
+$rest_discount_pct = get_option('afd_restaurant_discount', '0'); 
 ?>
 
 <style>
-    :root { --primary-red: #d63638; --light-bg: #f8f9fa; --border-color: #e5e7eb; }
-    .fd-checkout-wrapper { background: var(--light-bg); padding: 50px 0; min-height: 80vh; font-family: 'Inter', sans-serif; color: #333; }
-    .checkout-card { border: none; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); background: #fff; padding: 25px; margin-bottom: 25px; }
-    .form-label { font-weight: 700; font-size: 0.85rem; color: #555; margin-bottom: 6px; }
-    .form-control { border-radius: 10px; padding: 10px 14px; border: 1px solid #ddd; transition: 0.3s; font-size: 15px; }
-    .form-control:focus { border-color: var(--primary-red); box-shadow: 0 0 0 3px rgba(214, 54, 56, 0.08); }
-    
-    .fulfillment-toggle { display: flex; background: #eee; padding: 4px; border-radius: 12px; margin-bottom: 25px; }
-    .fulfillment-toggle input { display: none; }
-    .fulfillment-toggle label { flex: 1; text-align: center; padding: 10px; border-radius: 9px; cursor: pointer; font-weight: 700; transition: 0.3s; color: #666; margin: 0; font-size: 14px; }
-    .fulfillment-toggle input:checked + label { background: var(--primary-red); color: #fff; }
+    :root { 
+        --primary-red: #d63638; 
+        --light-bg: #f8f9fa; 
+        --border-color: #e5e7eb; 
+        --text-dark: #333;
+        --text-muted: #666;
+    }
 
-    /* WooCommerce Style Payment Methods */
-    .wc-payment-methods { list-style: none; padding: 0; margin: 20px 0; border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; background: #fafafa; }
-    .wc-payment-item { border-bottom: 1px solid var(--border-color); }
+    .fd-checkout-wrapper { 
+        background: var(--light-bg); 
+        padding: 60px 0; 
+        min-height: 90vh; 
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; 
+        color: var(--text-dark); 
+    }
+
+    .checkout-card { 
+        border: none; 
+        border-radius: 20px; 
+        box-shadow: 0 10px 40px rgba(0,0,0,0.04); 
+        background: #fff; 
+        padding: 30px; 
+        margin-bottom: 30px; 
+    }
+
+    .section-title { 
+        font-weight: 800; 
+        font-size: 1.25rem; 
+        margin-bottom: 25px; 
+        display: flex; 
+        align-items: center; 
+        gap: 10px;
+    }
+
+    .form-label { 
+        font-weight: 700; 
+        font-size: 0.85rem; 
+        color: #444; 
+        margin-bottom: 8px; 
+    }
+
+    .form-control { 
+        border-radius: 12px; 
+        padding: 12px 16px; 
+        border: 1.5px solid #eee; 
+        transition: all 0.3s ease; 
+        font-size: 15px; 
+        background: #fafafa;
+    }
+
+    .form-control:focus { 
+        background: #fff;
+        border-color: var(--primary-red); 
+        box-shadow: 0 0 0 4px rgba(214, 54, 56, 0.1); 
+        outline: none;
+    }
+
+    /* Fulfillment Toggle Buttons */
+    .fulfillment-toggle { 
+        display: flex; 
+        background: #f1f1f1; 
+        padding: 5px; 
+        border-radius: 14px; 
+        margin-bottom: 30px; 
+    }
+    .fulfillment-toggle input { display: none; }
+    .fulfillment-toggle label { 
+        flex: 1; 
+        text-align: center; 
+        padding: 12px; 
+        border-radius: 10px; 
+        cursor: pointer; 
+        font-weight: 700; 
+        transition: 0.3s; 
+        color: var(--text-muted); 
+        margin: 0; 
+        font-size: 14px; 
+    }
+    .fulfillment-toggle input:checked + label { 
+        background: var(--primary-red); 
+        color: #fff; 
+        box-shadow: 0 4px 10px rgba(214, 54, 56, 0.2);
+    }
+
+    /* Summary Items */
+    .summary-item { 
+        display: flex; 
+        justify-content: space-between; 
+        margin-bottom: 12px; 
+        font-size: 14px; 
+        color: #555; 
+    }
+    .summary-item strong { color: #1a1a1a; }
+    
+    .discount-line { color: #10b981; font-weight: 700; }
+
+    /* Payment Methods */
+    .wc-payment-methods { 
+        list-style: none; 
+        padding: 0; 
+        margin: 25px 0; 
+        border: 1px solid var(--border-color); 
+        border-radius: 15px; 
+        overflow: hidden; 
+    }
+    .wc-payment-item { border-bottom: 1px solid var(--border-color); background: #fff; }
     .wc-payment-item:last-child { border-bottom: none; }
     .wc-payment-item input[type="radio"] { display: none; }
-    .wc-payment-item label { display: block; padding: 15px; cursor: pointer; font-weight: 700; color: #333; transition: 0.2s; position: relative; margin: 0; font-size: 14px; }
-    .wc-payment-item label::before { content: ""; display: inline-block; width: 16px; height: 16px; border: 2px solid #ccc; border-radius: 50%; margin-right: 10px; vertical-align: middle; background: #fff; }
-    .wc-payment-item input:checked + label { background: #fff; }
-    .wc-payment-item input:checked + label::before { border-color: var(--primary-red); background: radial-gradient(var(--primary-red) 40%, #fff 50%); }
-    .payment-desc { max-height: 0; overflow: hidden; transition: 0.3s ease-out; padding: 0 15px; font-size: 0.85rem; color: #777; line-height: 1.4; }
-    .wc-payment-item input:checked ~ .payment-desc { max-height: 100px; padding: 0 15px 15px 42px; }
+    .wc-payment-item label { 
+        display: block; 
+        padding: 18px; 
+        cursor: pointer; 
+        font-weight: 700; 
+        color: var(--text-dark); 
+        margin: 0; 
+        font-size: 15px; 
+    }
+    .wc-payment-item label::before { 
+        content: ""; 
+        display: inline-block; 
+        width: 18px; 
+        height: 18px; 
+        border: 2px solid #ddd; 
+        border-radius: 50%; 
+        margin-right: 12px; 
+        vertical-align: middle; 
+        background: #fff; 
+    }
+    .wc-payment-item input:checked + label { background: #fdfdfd; }
+    .wc-payment-item input:checked + label::before { 
+        border-color: var(--primary-red); 
+        background: radial-gradient(var(--primary-red) 40%, #fff 50%); 
+    }
+    .payment-desc { 
+        max-height: 0; 
+        overflow: hidden; 
+        transition: 0.3s ease; 
+        padding: 0 18px; 
+        font-size: 13px; 
+        color: #888; 
+    }
+    .wc-payment-item input:checked ~ .payment-desc { max-height: 80px; padding: 0 18px 18px 48px; }
 
-    .schedule-badge { background: #fffbeb; border: 1px solid #fef3c7; color: #92400e; padding: 10px; border-radius: 10px; font-size: 13px; font-weight: 700; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
-    .summary-item { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px; color: #555; }
-    .place-order-btn { background: var(--primary-red); color: #fff; border: none; width: 100%; padding: 16px; border-radius: 12px; font-weight: 800; font-size: 1.1rem; transition: 0.3s; box-shadow: 0 6px 12px rgba(214, 54, 56, 0.2); }
-    .place-order-btn:hover { background: #b52a2c; transform: translateY(-1px); }
+    .schedule-badge { 
+        background: #fffbeb; 
+        border: 1px solid #fef3c7; 
+        color: #92400e; 
+        padding: 12px; 
+        border-radius: 12px; 
+        font-size: 13px; 
+        font-weight: 700; 
+        margin-bottom: 25px; 
+        display: flex; 
+        align-items: center; 
+        gap: 10px; 
+    }
+
+    .place-order-btn { 
+        background: var(--primary-red); 
+        color: #fff; 
+        border: none; 
+        width: 100%; 
+        padding: 18px; 
+        border-radius: 15px; 
+        font-weight: 800; 
+        font-size: 1.15rem; 
+        transition: 0.3s; 
+        box-shadow: 0 8px 20px rgba(214, 54, 56, 0.25); 
+        cursor: pointer;
+    }
+    .place-order-btn:hover { background: #b52a2c; transform: translateY(-2px); }
+    .place-order-btn:disabled { background: #ccc; cursor: not-allowed; transform: none; }
+
+    .cart-item-row { 
+        display: flex; 
+        justify-content: space-between; 
+        padding: 8px 0; 
+        border-bottom: 1px dashed #eee; 
+        font-size: 14px;
+    }
 </style>
 
 <div class="fd-checkout-wrapper">
@@ -129,7 +255,7 @@ $rest_discount     = get_option('afd_restaurant_discount', '0.00');
         <div class="row">
             <div class="col-lg-7">
                 <div class="checkout-card">
-                    <h5 class="fw-bold mb-4">Fulfillment Method</h5>
+                    <h5 class="section-title">1. How would you like your food?</h5>
                     <div class="fulfillment-toggle">
                         <input type="radio" name="orderType" id="typeDelivery" value="delivery" checked>
                         <label for="typeDelivery">🚚 Delivery</label>
@@ -137,27 +263,27 @@ $rest_discount     = get_option('afd_restaurant_discount', '0.00');
                         <label for="typePickup">🛍️ Pickup</label>
                     </div>
 
-                    <h5 class="fw-bold mb-4">Contact Details</h5>
+                    <h5 class="section-title">2. Contact Information</h5>
                     <div class="row">
-                        <div class="col-md-6 mb-3">
+                        <div class="col-md-6 mb-4">
                             <label class="form-label">Full Name</label>
-                            <input type="text" id="fullName" class="form-control" value="<?php echo esc_attr($u->display_name); ?>">
+                            <input type="text" id="fullName" class="form-control" placeholder="Enter your name" value="<?php echo esc_attr($u->display_name); ?>">
                         </div>
-                        <div class="col-md-6 mb-3">
+                        <div class="col-md-6 mb-4">
                             <label class="form-label">Email Address</label>
-                            <input type="email" id="email" class="form-control" value="<?php echo esc_attr($u->user_email); ?>">
+                            <input type="email" id="email" class="form-control" placeholder="your@email.com" value="<?php echo esc_attr($u->user_email); ?>">
                         </div>
-                        <div class="col-md-12 mb-3">
+                        <div class="col-md-12 mb-4">
                             <label class="form-label">Phone Number</label>
-                            <input type="tel" id="phone" class="form-control" value="<?php echo esc_attr($user_phone); ?>">
+                            <input type="tel" id="phone" class="form-control" placeholder="e.g. 07123456789" value="<?php echo esc_attr($user_phone); ?>">
                         </div>
-                        <div class="col-md-12 mb-3" id="addressArea">
+                        <div class="col-md-12 mb-4" id="addressArea">
                             <label class="form-label">Delivery Address</label>
-                            <textarea id="address" class="form-control" rows="2"><?php echo esc_textarea($user_address); ?></textarea>
+                            <textarea id="address" class="form-control" rows="3" placeholder="Street name, house number, postcode..."><?php echo esc_textarea($user_address); ?></textarea>
                         </div>
                         <div class="col-md-12">
-                            <label class="form-label">Special Notes (Optional)</label>
-                            <textarea id="notes" class="form-control" rows="2" placeholder="Instructions for our staff..."></textarea>
+                            <label class="form-label">Notes for Kitchen / Driver</label>
+                            <textarea id="notes" class="form-control" rows="2" placeholder="e.g. Gate code is 1234, no onions please..."></textarea>
                         </div>
                     </div>
                 </div>
@@ -165,34 +291,31 @@ $rest_discount     = get_option('afd_restaurant_discount', '0.00');
 
             <div class="col-lg-5">
                 <div class="checkout-card sticky-top" style="top: 20px;">
-                    <h5 class="fw-bold mb-4">Order Summary</h5>
+                    <h5 class="section-title">Order Summary</h5>
                     
                     <div id="scheduleInfo" class="schedule-badge" style="display:none;">
                         <span class="dashicons dashicons-clock"></span>
-                        <span>Time: <span id="timeValDisplay">ASAP</span></span>
+                        <span>Scheduled for: <span id="timeValDisplay">ASAP</span></span>
                     </div>
 
-                    <div id="itemsContainer" class="mb-3"></div>
+                    <div id="itemsContainer" class="mb-4">
+                        </div>
 
-                    <div class="border-top pt-3">
+                    <div class="pt-3 border-top">
                         <div class="summary-item">
                             <span>Subtotal</span>
                             <span><?php echo $currency; ?><span id="subtotalVal">0.00</span></span>
                         </div>
-                        <div class="summary-item">
-                            <span>Restaurant discount</span>
-                            <span>-<?php echo $currency . number_format(floatval($rest_discount), 2); ?></span>
-                        </div>
-                        <div class="summary-item" style="font-weight:700; color:#1a1a1a;">
-                            <span>Order total</span>
-                            <span><?php echo $currency; ?><span id="orderTotalVal">0.00</span></span>
+                        <div class="summary-item discount-line">
+                            <span>Restaurant Discount (<?php echo esc_html($rest_discount_pct); ?>%)</span>
+                            <span>-<?php echo $currency; ?><span id="discountVal">0.00</span></span>
                         </div>
                         <div class="summary-item">
                             <span>Service Charge</span>
                             <span><?php echo $currency . number_format(floatval($service_fee), 2); ?></span>
                         </div>
                         <div class="summary-item" id="deliveryRow">
-                            <span>Delivery Charges</span>
+                            <span>Delivery Fee</span>
                             <span><?php echo $currency; ?><span id="deliveryVal"><?php echo number_format(floatval($base_delivery_fee), 2); ?></span></span>
                         </div>
                         <div class="summary-item">
@@ -200,11 +323,14 @@ $rest_discount     = get_option('afd_restaurant_discount', '0.00');
                             <span><?php echo $currency . number_format(floatval($bag_fee), 2); ?></span>
                         </div>
                         <div class="summary-item">
-                            <span>Tips</span>
-                            <span><?php echo $currency; ?><input type="number" id="tipAmount" class="form-control d-inline-block p-1" style="width:65px; height:28px; font-size:13px; text-align:right;" value="0.00" step="0.50"></span>
+                            <span>Add a Tip for Driver</span>
+                            <div class="d-flex align-items-center">
+                                <span class="me-1"><?php echo $currency; ?></span>
+                                <input type="number" id="tipAmount" class="form-control p-1 text-end" style="width:70px; height:30px;" value="0.00" step="0.50" min="0">
+                            </div>
                         </div>
 
-                        <div class="summary-item mt-2 pt-3 border-top" style="font-size: 1.3rem;">
+                        <div class="summary-item mt-3 pt-3 border-top" style="font-size: 1.4rem;">
                             <strong>Total Due</strong>
                             <strong style="color: var(--primary-red);"><?php echo $currency; ?><span id="totalDueVal">0.00</span></strong>
                         </div>
@@ -213,19 +339,22 @@ $rest_discount     = get_option('afd_restaurant_discount', '0.00');
                     <div class="wc-payment-methods">
                         <div class="wc-payment-item">
                             <input type="radio" name="paymentMethod" id="payCash" value="cash" checked>
-                            <label for="payCash">Cash on Delivery</label>
-                            <div class="payment-desc">Pay with cash upon arrival at your location.</div>
+                            <label for="payCash">Cash Payment</label>
+                            <div class="payment-desc">Pay with cash at your doorstep or when picking up.</div>
                         </div>
                         <div class="wc-payment-item">
                             <input type="radio" name="paymentMethod" id="payCard" value="card">
-                            <label for="payCard">Pay by Card on Arrival</label>
-                            <div class="payment-desc">We will bring a card terminal for payment on delivery.</div>
+                            <label for="payCard">Card on Arrival</label>
+                            <div class="payment-desc">We will bring a card machine to your location.</div>
                         </div>
                     </div>
 
                     <input type="hidden" id="fd_nonce" value="<?php echo wp_create_nonce('fd_place_order_action'); ?>">
-                    <button id="placeOrderBtn" class="place-order-btn">CONFIRM ORDER</button>
-                    <p class="text-center mt-3 text-muted" style="font-size: 11px;">Your personal data will be used to process your order.</p>
+                    <button id="placeOrderBtn" class="place-order-btn">PLACE YOUR ORDER</button>
+                    
+                    <p class="text-center mt-4 text-muted" style="font-size: 11px; line-height: 1.5;">
+                        By placing your order, you agree to our terms and conditions. Your data is handled securely to process your delivery.
+                    </p>
                 </div>
             </div>
         </div>
@@ -234,101 +363,149 @@ $rest_discount     = get_option('afd_restaurant_discount', '0.00');
 
 <script>
 document.addEventListener('DOMContentLoaded', function(){
-    let cart = JSON.parse(localStorage.getItem('fd_cart_save')) || [];
-    let scheduledTime = localStorage.getItem('fd_scheduled_time') || 'asap';
+    // LOAD CART & SETTINGS
+    const cart = JSON.parse(localStorage.getItem('fd_cart_save')) || [];
+    const scheduledTime = localStorage.getItem('fd_scheduled_time') || 'asap';
     
     const deliveryFee = parseFloat("<?php echo $base_delivery_fee; ?>") || 0;
     const serviceFee = parseFloat("<?php echo $service_fee; ?>") || 0;
     const bagFee = parseFloat("<?php echo $bag_fee; ?>") || 0;
-    const restDiscount = parseFloat("<?php echo $rest_discount; ?>") || 0;
+    const restDiscountPct = parseFloat("<?php echo $rest_discount_pct; ?>") || 0;
     const currency = "<?php echo $currency; ?>";
 
-    function updateUI() {
+    /**
+     * Update the receipt summary
+     */
+    function calculateTotals() {
         const isPickup = document.getElementById('typePickup').checked;
         const container = document.getElementById('itemsContainer');
         const tipVal = parseFloat(document.getElementById('tipAmount').value) || 0;
+        
+        // Show/Hide Elements
+        document.getElementById('addressArea').style.display = isPickup ? 'none' : 'block';
+        document.getElementById('deliveryRow').style.display = isPickup ? 'none' : 'flex';
         
         if(scheduledTime !== 'asap') {
             document.getElementById('scheduleInfo').style.display = 'flex';
             document.getElementById('timeValDisplay').innerText = scheduledTime;
         }
 
-        document.getElementById('addressArea').style.display = isPickup ? 'none' : 'block';
-        document.getElementById('deliveryRow').style.display = isPickup ? 'none' : 'flex';
-
         if(cart.length === 0) {
-            container.innerHTML = '<p class="text-muted">Empty Cart</p>';
+            container.innerHTML = '<div class="alert alert-warning py-2" style="font-size:13px;">Your cart is empty. Please add items.</div>';
             return;
         }
 
+        // Generate Item List & Subtotal
         let subtotal = 0;
         container.innerHTML = cart.map(item => {
             let itemTotal = item.price * item.qty;
             subtotal += itemTotal;
-            return `<div class="d-flex justify-content-between mb-1" style="font-size:13px;">
-                        <span><strong>${item.qty}x</strong> ${item.name}</span>
-                        <span>${currency}${itemTotal.toFixed(2)}</span>
-                    </div>`;
+            return `
+                <div class="cart-item-row">
+                    <span><strong>${item.qty}x</strong> ${item.name}</span>
+                    <span class="fw-bold">${currency}${itemTotal.toFixed(2)}</span>
+                </div>`;
         }).join('');
 
-        const orderTotal = Math.max(0, subtotal - restDiscount);
+        // ADVANCED CALCULATION LOGIC
+        // 1. Calculate % Discount
+        const discountVal = (subtotal * restDiscountPct) / 100;
+        
+        // 2. Discounted Subtotal
+        const afterDiscount = subtotal - discountVal;
+        
+        // 3. Conditional Delivery Fee
         const finalDelivery = isPickup ? 0 : deliveryFee;
-        const totalDue = subtotal > 0 ? (orderTotal + serviceFee + finalDelivery + bagFee + tipVal) : 0;
+        
+        // 4. Grand Total
+        const grandTotal = (afterDiscount + serviceFee + finalDelivery + bagFee + tipVal);
 
+        // Update DOM
         document.getElementById('subtotalVal').innerText = subtotal.toFixed(2);
-        document.getElementById('orderTotalVal').innerText = orderTotal.toFixed(2);
+        document.getElementById('discountVal').innerText = discountVal.toFixed(2);
         document.getElementById('deliveryVal').innerText = finalDelivery.toFixed(2);
-        document.getElementById('totalDueVal').innerText = totalDue.toFixed(2);
+        document.getElementById('totalDueVal').innerText = grandTotal.toFixed(2);
     }
 
-    document.querySelectorAll('input[name="orderType"], #tipAmount').forEach(el => {
-        el.addEventListener('change', updateUI);
-    });
-
+    /**
+     * Submit Order via AJAX
+     */
     document.getElementById('placeOrderBtn').addEventListener('click', function() {
         const orderType = document.querySelector('input[name="orderType"]:checked').value;
-        const paymentMethod = document.querySelector('input[name="paymentMethod"]:checked').value;
         const btn = this;
 
-        const data = {
+        // Collect Field Data
+        const orderData = {
             orderType: orderType,
-            paymentMethod: paymentMethod,
+            paymentMethod: document.querySelector('input[name="paymentMethod"]:checked').value,
             fullName: document.getElementById('fullName').value.trim(),
             email: document.getElementById('email').value.trim(),
             phone: document.getElementById('phone').value.trim(),
-            address: orderType === 'delivery' ? document.getElementById('address').value.trim() : 'STORE PICKUP',
+            address: (orderType === 'pickup') ? 'COLLECTION' : document.getElementById('address').value.trim(),
             notes: document.getElementById('notes').value.trim(),
             scheduledTime: scheduledTime,
             cart: cart,
+            // Prices sent as individual columns for DB mapping
             subtotal: document.getElementById('subtotalVal').innerText,
+            service_fee: serviceFee,
+            bag_fee: bagFee,
+            tip: document.getElementById('tipAmount').value,
             delivery: document.getElementById('deliveryVal').innerText,
             total: document.getElementById('totalDueVal').innerText
         };
 
-        if(!data.fullName || !data.phone || (orderType === 'delivery' && !data.address)) {
-            alert('Required contact fields are empty.'); return;
+        // Validation
+        if(!orderData.fullName || !orderData.phone) {
+            alert('Please provide your name and phone number.');
+            return;
+        }
+        if(orderType === 'delivery' && !orderData.address) {
+            alert('Please provide a delivery address.');
+            return;
         }
 
-        btn.disabled = true; btn.innerText = "Processing...";
+        // Lock button
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> SECURING ORDER...';
 
-        const fd = new FormData();
-        fd.append('fd_place_order', JSON.stringify(data));
-        fd.append('fd_nonce', document.getElementById('fd_nonce').value);
+        const formData = new FormData();
+        formData.append('fd_place_order', JSON.stringify(orderData));
+        formData.append('fd_nonce', document.getElementById('fd_nonce').value);
 
-        fetch(window.location.href, { method: 'POST', body: fd })
-        .then(res => res.json())
-        .then(res => {
-            if(res.status === 'success') {
+        fetch(window.location.href, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(result => {
+            if(result.status === 'success') {
+                // Clear local storage on success
                 localStorage.removeItem('fd_cart_save');
                 localStorage.removeItem('fd_scheduled_time');
-                window.location.href = '<?php echo home_url('/thanks/?order_id='); ?>' + res.order_id;
+                // Redirect to Thank You Page
+                window.location.href = "<?php echo home_url('/thanks/?order_id='); ?>" + result.order_id;
             } else {
-                alert(res.message); btn.disabled = false; btn.innerText = "CONFIRM ORDER";
+                alert(result.message);
+                btn.disabled = false;
+                btn.innerText = "PLACE YOUR ORDER";
             }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Something went wrong. Please try again.');
+            btn.disabled = false;
+            btn.innerText = "PLACE YOUR ORDER";
         });
     });
 
-    updateUI();
+    // LISTENERS
+    document.querySelectorAll('input[name="orderType"]').forEach(radio => {
+        radio.addEventListener('change', calculateTotals);
+    });
+    document.getElementById('tipAmount').addEventListener('input', calculateTotals);
+
+    // Initial Run
+    calculateTotals();
 });
 </script>
 
