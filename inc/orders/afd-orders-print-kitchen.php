@@ -201,10 +201,20 @@ if (isset($_GET['action']) && $_GET['action'] === 'print' && $_GET['type'] === '
                 </div>
                 <?php endif; ?>
 
-                <div class="summary-line">
-                    <span>Service & Bag Fee</span>
-                    <span>£<?php echo number_format((float)($service_fee + $bag_fee), 2); ?></span>
-                </div>
+                <?php if ($service_fee > 0): ?>
+<div class="summary-line">
+    <span>Service Charge</span>
+    <span>£<?php echo number_format((float)$service_fee, 2); ?></span>
+</div>
+<?php endif; ?>
+
+<?php if ($bag_fee > 0): ?>
+<div class="summary-line">
+    <span>Bag Charge</span>
+    <span>£<?php echo number_format((float)$bag_fee, 2); ?></span>
+</div>
+<?php endif; ?>
+
                 
                 <div class="summary-line">
                     <span>Delivery Charges</span>
