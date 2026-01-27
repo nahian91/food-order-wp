@@ -5,12 +5,10 @@ Template Name: Checkout
 
 /**
  * 1. AJAX HANDLER: PROCESSING THE ORDER
- * This section handles the background submission when the user clicks "Confirm Order"
  */
 if (isset($_POST['fd_place_order'])) {
     header('Content-Type: application/json');
 
-    // Security Nonce Verification
     if (!isset($_POST['fd_nonce']) || !wp_verify_nonce($_POST['fd_nonce'], 'fd_place_order_action')) {
         echo json_encode(['status' => 'error', 'message' => 'Security check failed. Please refresh the page.']);
         exit;
@@ -24,19 +22,14 @@ if (isset($_POST['fd_place_order'])) {
         exit;
     }
 
-    // Prepare User ID
     $user_id = get_current_user_id() ?: 0;
     $data['user_id'] = $user_id;
 
-    /**
-     * fd_insert_custom_order is your helper function in functions.php
-     * It maps the following keys to DB columns:
-     * subtotal, service_fee, bag_fee, tip, delivery, total
-     */
+    // Note: Ensure your fd_insert_custom_order function in functions.php 
+    // is updated to handle 'kitchen_notes' and 'delivery_notes' keys.
     $order_display_id = fd_insert_custom_order($data);
 
     if ($order_display_id) {
-        // Update user meta for easier future checkouts
         if ($user_id > 0) {
             update_user_meta($user_id, 'phone', sanitize_text_field($data['phone']));
             if ($data['orderType'] === 'delivery') {
@@ -59,7 +52,6 @@ $u = wp_get_current_user();
 $user_phone = get_user_meta($u->ID, 'phone', true);
 $user_address = get_user_meta($u->ID, 'address', true);
 
-// Get Global Settings from Admin
 $currency = '£';
 $base_delivery_fee = get_option('afd_delivery_charge', '0.00');
 $service_fee       = get_option('afd_service_charge', '0.00');
@@ -125,7 +117,6 @@ $rest_discount_pct = get_option('afd_restaurant_discount', '0');
         outline: none;
     }
 
-    /* Fulfillment Toggle Buttons */
     .fulfillment-toggle { 
         display: flex; 
         background: #f1f1f1; 
@@ -149,10 +140,9 @@ $rest_discount_pct = get_option('afd_restaurant_discount', '0');
     .fulfillment-toggle input:checked + label { 
         background: var(--primary-red); 
         color: #fff; 
-        box-shadow: 0 4px 10px rgba(214, 54, 56, 0.2);
+        box-shadow: 0 4px 10px rgba(214, 54, 56, 0.25);
     }
 
-    /* Summary Items */
     .summary-item { 
         display: flex; 
         justify-content: space-between; 
@@ -164,7 +154,6 @@ $rest_discount_pct = get_option('afd_restaurant_discount', '0');
     
     .discount-line { color: #10b981; font-weight: 700; }
 
-    /* Payment Methods */
     .wc-payment-methods { 
         list-style: none; 
         padding: 0; 
@@ -281,9 +270,14 @@ $rest_discount_pct = get_option('afd_restaurant_discount', '0');
                             <label class="form-label">Delivery Address</label>
                             <textarea id="address" class="form-control" rows="3" placeholder="Street name, house number, postcode..."><?php echo esc_textarea($user_address); ?></textarea>
                         </div>
-                        <div class="col-md-12">
-                            <label class="form-label">Notes for Kitchen / Driver</label>
-                            <textarea id="notes" class="form-control" rows="2" placeholder="e.g. Gate code is 1234, no onions please..."></textarea>
+                        
+                        <div class="col-md-12 mb-4">
+                            <label class="form-label">Notes for Kitchen</label>
+                            <textarea id="kitchen_notes" class="form-control" rows="2" placeholder="e.g. No onions, extra spicy, allergies..."></textarea>
+                        </div>
+                        <div class="col-md-12" id="deliveryNotesArea">
+                            <label class="form-label">Notes for Delivery</label>
+                            <textarea id="delivery_notes" class="form-control" rows="2" placeholder="e.g. Gate code 1234, knock loudly..."></textarea>
                         </div>
                     </div>
                 </div>
@@ -298,8 +292,7 @@ $rest_discount_pct = get_option('afd_restaurant_discount', '0');
                         <span>Scheduled for: <span id="timeValDisplay">ASAP</span></span>
                     </div>
 
-                    <div id="itemsContainer" class="mb-4">
-                        </div>
+                    <div id="itemsContainer" class="mb-4"></div>
 
                     <div class="pt-3 border-top">
                         <div class="summary-item">
@@ -353,7 +346,7 @@ $rest_discount_pct = get_option('afd_restaurant_discount', '0');
                     <button id="placeOrderBtn" class="place-order-btn">PLACE YOUR ORDER</button>
                     
                     <p class="text-center mt-4 text-muted" style="font-size: 11px; line-height: 1.5;">
-                        By placing your order, you agree to our terms and conditions. Your data is handled securely to process your delivery.
+                        By placing your order, you agree to our terms and conditions.
                     </p>
                 </div>
             </div>
@@ -363,7 +356,6 @@ $rest_discount_pct = get_option('afd_restaurant_discount', '0');
 
 <script>
 document.addEventListener('DOMContentLoaded', function(){
-    // LOAD CART & SETTINGS
     const cart = JSON.parse(localStorage.getItem('fd_cart_save')) || [];
     const scheduledTime = localStorage.getItem('fd_scheduled_time') || 'asap';
     
@@ -373,17 +365,15 @@ document.addEventListener('DOMContentLoaded', function(){
     const restDiscountPct = parseFloat("<?php echo $rest_discount_pct; ?>") || 0;
     const currency = "<?php echo $currency; ?>";
 
-    /**
-     * Update the receipt summary
-     */
     function calculateTotals() {
         const isPickup = document.getElementById('typePickup').checked;
         const container = document.getElementById('itemsContainer');
         const tipVal = parseFloat(document.getElementById('tipAmount').value) || 0;
         
-        // Show/Hide Elements
+        // UI Toggles based on Fulfillment Type
         document.getElementById('addressArea').style.display = isPickup ? 'none' : 'block';
         document.getElementById('deliveryRow').style.display = isPickup ? 'none' : 'flex';
+        document.getElementById('deliveryNotesArea').style.display = isPickup ? 'none' : 'block';
         
         if(scheduledTime !== 'asap') {
             document.getElementById('scheduleInfo').style.display = 'flex';
@@ -391,11 +381,10 @@ document.addEventListener('DOMContentLoaded', function(){
         }
 
         if(cart.length === 0) {
-            container.innerHTML = '<div class="alert alert-warning py-2" style="font-size:13px;">Your cart is empty. Please add items.</div>';
+            container.innerHTML = '<div class="alert alert-warning py-2" style="font-size:13px;">Your cart is empty.</div>';
             return;
         }
 
-        // Generate Item List & Subtotal
         let subtotal = 0;
         container.innerHTML = cart.map(item => {
             let itemTotal = item.price * item.qty;
@@ -407,34 +396,21 @@ document.addEventListener('DOMContentLoaded', function(){
                 </div>`;
         }).join('');
 
-        // ADVANCED CALCULATION LOGIC
-        // 1. Calculate % Discount
         const discountVal = (subtotal * restDiscountPct) / 100;
-        
-        // 2. Discounted Subtotal
         const afterDiscount = subtotal - discountVal;
-        
-        // 3. Conditional Delivery Fee
         const finalDelivery = isPickup ? 0 : deliveryFee;
-        
-        // 4. Grand Total
         const grandTotal = (afterDiscount + serviceFee + finalDelivery + bagFee + tipVal);
 
-        // Update DOM
         document.getElementById('subtotalVal').innerText = subtotal.toFixed(2);
         document.getElementById('discountVal').innerText = discountVal.toFixed(2);
         document.getElementById('deliveryVal').innerText = finalDelivery.toFixed(2);
         document.getElementById('totalDueVal').innerText = grandTotal.toFixed(2);
     }
 
-    /**
-     * Submit Order via AJAX
-     */
     document.getElementById('placeOrderBtn').addEventListener('click', function() {
         const orderType = document.querySelector('input[name="orderType"]:checked').value;
         const btn = this;
 
-        // Collect Field Data
         const orderData = {
             orderType: orderType,
             paymentMethod: document.querySelector('input[name="paymentMethod"]:checked').value,
@@ -442,10 +418,11 @@ document.addEventListener('DOMContentLoaded', function(){
             email: document.getElementById('email').value.trim(),
             phone: document.getElementById('phone').value.trim(),
             address: (orderType === 'pickup') ? 'COLLECTION' : document.getElementById('address').value.trim(),
-            notes: document.getElementById('notes').value.trim(),
+            // CAPTURE BOTH NOTES
+            kitchen_notes: document.getElementById('kitchen_notes').value.trim(),
+            delivery_notes: (orderType === 'pickup') ? '' : document.getElementById('delivery_notes').value.trim(),
             scheduledTime: scheduledTime,
             cart: cart,
-            // Prices sent as individual columns for DB mapping
             subtotal: document.getElementById('subtotalVal').innerText,
             service_fee: serviceFee,
             bag_fee: bagFee,
@@ -454,7 +431,6 @@ document.addEventListener('DOMContentLoaded', function(){
             total: document.getElementById('totalDueVal').innerText
         };
 
-        // Validation
         if(!orderData.fullName || !orderData.phone) {
             alert('Please provide your name and phone number.');
             return;
@@ -464,7 +440,6 @@ document.addEventListener('DOMContentLoaded', function(){
             return;
         }
 
-        // Lock button
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> SECURING ORDER...';
 
@@ -479,10 +454,8 @@ document.addEventListener('DOMContentLoaded', function(){
         .then(response => response.json())
         .then(result => {
             if(result.status === 'success') {
-                // Clear local storage on success
                 localStorage.removeItem('fd_cart_save');
                 localStorage.removeItem('fd_scheduled_time');
-                // Redirect to Thank You Page
                 window.location.href = "<?php echo home_url('/thanks/?order_id='); ?>" + result.order_id;
             } else {
                 alert(result.message);
@@ -492,19 +465,16 @@ document.addEventListener('DOMContentLoaded', function(){
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Something went wrong. Please try again.');
             btn.disabled = false;
             btn.innerText = "PLACE YOUR ORDER";
         });
     });
 
-    // LISTENERS
     document.querySelectorAll('input[name="orderType"]').forEach(radio => {
         radio.addEventListener('change', calculateTotals);
     });
     document.getElementById('tipAmount').addEventListener('input', calculateTotals);
 
-    // Initial Run
     calculateTotals();
 });
 </script>

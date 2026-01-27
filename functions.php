@@ -257,14 +257,15 @@ add_action('admin_menu', function(){
 });
 
 /*--------------------------------------------------------------
-# 1. Database Table Creation (Force-Fix + Sync Version)
+# 1. Database Table Creation (Updated for Split Notes)
 --------------------------------------------------------------*/
 function afd_create_orders_table() {
     global $wpdb;
     $table_name = $wpdb->prefix . 'afd_food_orders';
     $charset_collate = $wpdb->get_charset_collate();
 
-    // Base table create / sync
+    // Added 'kitchen_notes' and renamed 'notes' to 'delivery_notes' conceptually
+    // Note: keeping 'notes' column but treating it as Delivery Notes for compatibility
     $sql = "CREATE TABLE $table_name (
         id bigint(20) NOT NULL AUTO_INCREMENT,
         display_id varchar(20) NOT NULL,
@@ -275,7 +276,8 @@ function afd_create_orders_table() {
         email varchar(255) DEFAULT '' NOT NULL,
         phone varchar(50) DEFAULT '' NOT NULL,
         address text NOT NULL,
-        notes text NOT NULL,
+        kitchen_notes text NOT NULL,
+        delivery_notes text NOT NULL,
         scheduled_time varchar(50) DEFAULT 'asap' NOT NULL,
         delay_message text NOT NULL,
         items_json longtext NOT NULL,
@@ -315,20 +317,17 @@ function afd_generate_unique_display_id() {
     );
 
     $new_sequence = intval($count_today) + 1;
-
     return $date_prefix . '-' . str_pad($new_sequence, 3, '0', STR_PAD_LEFT);
 }
 
 
 /*--------------------------------------------------------------
-# 3. Helper: Insert Custom Order
-# (Supports Pre-Order, Delay Message, Payment Method)
+# 3. Helper: Insert Custom Order (Updated for Split Notes)
 --------------------------------------------------------------*/
 function fd_insert_custom_order($data) {
     global $wpdb;
     $table_name = $wpdb->prefix . 'afd_food_orders';
 
-    // Generate permanent display ID
     $permanent_id = afd_generate_unique_display_id();
 
     $time_val   = isset($data['scheduledTime']) ? $data['scheduledTime'] : 'asap';
@@ -346,7 +345,9 @@ function fd_insert_custom_order($data) {
             'email'          => sanitize_email($data['email']),
             'phone'          => sanitize_text_field($data['phone']),
             'address'        => sanitize_textarea_field($data['address']),
-            'notes'          => sanitize_textarea_field($data['notes']),
+            // Mapped from Checkout AJAX keys
+            'kitchen_notes'  => sanitize_textarea_field($data['kitchen_notes']),
+            'delivery_notes' => sanitize_textarea_field($data['delivery_notes']),
             'scheduled_time' => sanitize_text_field($time_val),
             'delay_message'  => sanitize_textarea_field($delay_msg),
             'items_json'     => wp_json_encode($data['cart']),
@@ -360,26 +361,10 @@ function fd_insert_custom_order($data) {
             'order_date'     => current_time('mysql')
         ],
         [
-            '%s', // display_id
-            '%d', // customer_id
-            '%s', // order_type
-            '%s', // payment_method
-            '%s', // full_name
-            '%s', // email
-            '%s', // phone
-            '%s', // address
-            '%s', // notes
-            '%s', // scheduled_time
-            '%s', // delay_message
-            '%s', // items_json
-            '%f', // subtotal
-            '%f', // service_fee
-            '%f', // bag_fee
-            '%f', // tip_amount
-            '%f', // delivery_fee
-            '%f', // total_price
-            '%s', // order_status
-            '%s'  // order_date
+            '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s', 
+            '%s', // kitchen_notes
+            '%s', // delivery_notes
+            '%s', '%s', '%s', '%f', '%f', '%f', '%f', '%f', '%f', '%s', '%s'
         ]
     );
 

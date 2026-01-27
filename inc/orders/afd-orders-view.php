@@ -1,7 +1,7 @@
 <?php
 /**
  * Final View Order - Complete Feature Set
- * Includes: Live Kitchen Timer, Address Mapping, and Charges Summary with Tips & Email.
+ * Includes: Live Kitchen Timer, Address Mapping, Split Kitchen/Delivery Notes, and Charges Summary.
  */
 if (!defined('ABSPATH')) exit;
 
@@ -183,14 +183,32 @@ $nav_addr = ($meta_flat ? "Flat $meta_flat, " : "") . ($meta_door ? "$meta_door 
                 </div>
             </div>
 
-            <?php if(!empty($order->notes)): ?>
-                <div class="view-card" style="border-left: 5px solid var(--res-warning);">
-                    <div class="view-card-header"><h2>Customer Special Instructions</h2></div>
+            <?php if(!empty($order->kitchen_notes)): ?>
+                <div class="view-card" style="border-left: 5px solid #ef4444; background: #fffefe;">
+                    <div class="view-card-header" style="background: #fef2f2;">
+                        <h2 style="color: #991b1b;"><span class="dashicons dashicons-food" style="margin-right:8px;"></span>Notes for Kitchen</h2>
+                    </div>
                     <div class="view-card-body">
-                        <div style="font-size:15px; color:#1d2327; line-height:1.6;"><?php echo nl2br(esc_html($order->notes)); ?></div>
+                        <div style="font-size:16px; color:#1d2327; line-height:1.6; font-weight: 600;">
+                            <?php echo nl2br(esc_html($order->kitchen_notes)); ?>
+                        </div>
                     </div>
                 </div>
             <?php endif; ?>
+
+            <?php if($order_type === 'delivery' && !empty($order->delivery_notes)): ?>
+                <div class="view-card" style="border-left: 5px solid #3b82f6; background: #f8fafc;">
+                    <div class="view-card-header" style="background: #eff6ff;">
+                        <h2 style="color: #1e40af;"><span class="dashicons dashicons-location-alt" style="margin-right:8px;"></span>Notes for Delivery</h2>
+                    </div>
+                    <div class="view-card-body">
+                        <div style="font-size:15px; color:#1d2327; line-height:1.6;">
+                            <?php echo nl2br(esc_html($order->delivery_notes)); ?>
+                        </div>
+                    </div>
+                </div>
+            <?php endif; ?>
+
         </div>
 
         <div class="sidebar-column">

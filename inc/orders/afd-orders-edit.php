@@ -6,7 +6,7 @@
  * - Live Financials (Items + Charges + Tips - Editable Discounts)
  * - Two-Way Discount Calculation (% <-> £)
  * - Kitchen Timer Sync
- * - Dual Notes (Internal & Delivery)
+ * - Dual Notes (Kitchen & Delivery)
  */
 
 if (!defined('ABSPATH')) exit;
@@ -25,7 +25,8 @@ if (!$afon_order_id) {
 # Checks and creates missing columns to prevent PHP Warnings
 --------------------------------------------------------------*/
 $required_columns = [
-    'delivery_notes' => "TEXT NULL AFTER `notes`",
+    'kitchen_notes'  => "TEXT NOT NULL AFTER `address`",
+    'delivery_notes' => "TEXT NOT NULL AFTER `kitchen_notes`",
     'tip_amount'     => "DECIMAL(10,2) DEFAULT '0.00' AFTER `delivery_fee`",
     'delay_message'  => "TEXT NULL AFTER `scheduled_time`"
 ];
@@ -64,7 +65,7 @@ if (isset($_POST['afon_update_order'])) {
     $new_order_date = date('Y-m-d H:i:s', $new_anchor_ts);
 
     $update_data = [
-        'notes'          => sanitize_textarea_field($_POST['afon_notes']),
+        'kitchen_notes'  => sanitize_textarea_field($_POST['afon_kitchen_notes']),
         'delivery_notes' => sanitize_textarea_field($_POST['afon_delivery_notes']),
         'delay_message'  => sanitize_textarea_field($_POST['afon_delay_message']), 
         'order_status'   => sanitize_text_field($_POST['afon_status']),
@@ -188,9 +189,9 @@ $discount_pct    = (float)get_option('afd_restaurant_discount', '0.00');
                 </div>
 
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
-                    <div class="view-card" style="border-left:4px solid #f59e0b;">
-                        <div class="view-card-header"><h2>Kitchen/Internal Notes</h2></div>
-                        <div class="view-card-body"><textarea name="afon_notes" class="edit-input" rows="4" placeholder="Staff only notes..."><?php echo esc_textarea($order->notes); ?></textarea></div>
+                    <div class="view-card" style="border-left:4px solid #ef4444;">
+                        <div class="view-card-header"><h2>Kitchen Notes (Internal)</h2></div>
+                        <div class="view-card-body"><textarea name="afon_kitchen_notes" class="edit-input" rows="4" placeholder="Cooking instructions..."><?php echo esc_textarea($order->kitchen_notes); ?></textarea></div>
                     </div>
                     <div class="view-card" style="border-left:4px solid var(--clr-blue);">
                         <div class="view-card-header"><h2>Delivery Notes (For Rider)</h2></div>
