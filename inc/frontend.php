@@ -196,8 +196,7 @@ add_shortcode('food_categories', 'fd_dynamic_category_carousel_shortcode');
 
 /**
  * SHORTCODE: Main Food Ordering System (Menu + Cart)
- * Features: Live Status Integration, Pre-Order Mode, & Dynamic Scheduling
- * Updated: Discount logic changed to Percentage (%)
+ * Features: Live Status Integration, Pre-Order Mode, Dynamic Scheduling, & Kitchen Notes
  */
 function fd_food_items_shortcode() {
     wp_enqueue_style('dashicons');
@@ -212,7 +211,23 @@ function fd_food_items_shortcode() {
     $saved_delivery_fee = get_option('afd_delivery_charge', '0.00');
     $saved_service_fee  = get_option('afd_service_charge', '0.00');
     $saved_bag_fee      = get_option('afd_bag_charge', '0.00');
-    $saved_discount     = get_option('afd_restaurant_discount', '0'); // Changed to integer/float for %
+    $saved_discount     = get_option('afd_restaurant_discount', '0'); 
+
+    // --- NEW: DYNAMIC TIME CALCULATION ---
+    $schedule    = get_option('afd_schedule', []);
+    $current_day = current_datetime()->format('D');
+    $time_options = [];
+
+    if (!empty($schedule[$current_day]) && isset($schedule[$current_day]['enabled']) && $schedule[$current_day]['enabled']) {
+        $start_ts = strtotime($schedule[$current_day]['open']);
+        $end_ts   = strtotime($schedule[$current_day]['close']);
+        if ($end_ts <= $start_ts) { $end_ts += 86400; }
+
+        // Generate 1-hour slots
+        for ($t = $start_ts; $t <= $end_ts; $t += 3600) {
+            $time_options[date('H:i', $t)] = date('h:i A', $t);
+        }
+    }
 
     // 2. FETCH DATA
     $items = get_posts([
@@ -291,6 +306,11 @@ function fd_food_items_shortcode() {
     .fd-schedule-wrap label { display: block; font-size: 12px; font-weight: 800; text-transform: uppercase; color: #666; margin-bottom: 8px; }
     .fd-schedule-select { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #ddd; background: #f9f9f9; font-weight: 600; outline: none; }
     .preorder-badge { background: #fffbeb; border: 1px solid #fef3c7; color: #92400e; padding: 12px; border-radius: 12px; font-size: 13px; font-weight: 700; margin-bottom: 20px; text-align: center; line-height: 1.4; }
+    .fd-kitchen-notes-wrap { margin-top: 15px; }
+    .fd-kitchen-notes-wrap label { display: block; font-size: 12px; font-weight: 800; text-transform: uppercase; color: #666; margin-bottom: 8px; }
+    .fd-kitchen-notes { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #ddd; background: #fff; font-size: 14px; outline: none; resize: none; transition: 0.3s; }
+    .fd-kitchen-notes:focus { border-color: #d63638; }
+
     @media (max-width: 991px) { .fd-cart-sidebar { width: 100%; order: -1; } }
 </style>
 
@@ -364,14 +384,14 @@ function fd_food_items_shortcode() {
                         <?php else : ?>
                             <option value="" disabled selected>Select Pre-Order Time</option>
                         <?php endif; ?>
-                        <option value="12:00">12:00 PM</option>
-                        <option value="13:00">01:00 PM</option>
-                        <option value="14:00">02:00 PM</option>
-                        <option value="17:00">05:00 PM</option>
-                        <option value="18:00">06:00 PM</option>
-                        <option value="19:00">07:00 PM</option>
-                        <option value="20:00">08:00 PM</option>
-                        <option value="21:00">09:00 PM</option>
+                        
+                        <?php 
+                        if(!empty($time_options)) {
+                            foreach($time_options as $val => $lbl) {
+                                echo '<option value="'.esc_attr($val).'">'.esc_html($lbl).'</option>';
+                            }
+                        }
+                        ?>
                     </select>
                 </div>
 
@@ -403,6 +423,11 @@ function fd_food_items_shortcode() {
                         <span>Total Due</span>
                         <span style="color:#d63638;"><?php echo $currency; ?><span id="fd-total-due">0.00</span></span>
                     </div>
+
+                    <div class="fd-kitchen-notes-wrap">
+                        <label for="fd-kitchen-notes">Kitchen Notes</label>
+                        <textarea id="fd-kitchen-notes" class="fd-kitchen-notes" rows="3" placeholder="Any allergies or special requests?"></textarea>
+                    </div>
                 </div>
 
                 <a href="#" class="fd-checkout-btn" id="fd-checkout-trigger">
@@ -419,7 +444,7 @@ jQuery(document).ready(function($){
     const delFee = parseFloat("<?php echo $saved_delivery_fee; ?>") || 0;
     const srvFee = parseFloat("<?php echo $saved_service_fee; ?>") || 0;
     const bagFee = parseFloat("<?php echo $saved_bag_fee; ?>") || 0;
-    const resDiscountPercent = parseFloat("<?php echo $saved_discount; ?>") || 0; // Interpreted as %
+    const resDiscountPercent = parseFloat("<?php echo $saved_discount; ?>") || 0; 
     const currency = "<?php echo $currency; ?>";
     const isLoggedIn = <?php echo $is_logged_in; ?>;
     const isActuallyOpen = <?php echo $is_actually_open ? 'true' : 'false'; ?>;
@@ -460,13 +485,11 @@ jQuery(document).ready(function($){
         
         $('#br-subtotal').text(subtotal.toFixed(2));
         
-        // --- NEW PERCENTAGE LOGIC ---
         let calculatedDiscount = (subtotal * resDiscountPercent) / 100;
         $('#br-discount-value').text(calculatedDiscount.toFixed(2));
         
         let orderTotal = Math.max(0, subtotal - calculatedDiscount);
         $('#br-order-total').text(orderTotal.toFixed(2));
-        // ----------------------------
         
         if(!isDelivery) $('#fd-delivery-row').hide(); else $('#fd-delivery-row').show();
 
@@ -505,6 +528,10 @@ jQuery(document).ready(function($){
     
     $('input[name="order_type"], #fd-tip-amount').on('change input', updateCart);
 
+    $(document).on('input', '#fd-kitchen-notes', function() {
+        localStorage.setItem('fd_kitchen_notes', $(this).val());
+    });
+
     $(document).on('click', '#fd-checkout-trigger', function(e) {
         e.preventDefault();
         if(cart.length === 0) return;
@@ -518,8 +545,14 @@ jQuery(document).ready(function($){
         
         localStorage.setItem('fd_scheduled_time', selectedTime);
         localStorage.setItem('fd_order_mode', isActuallyOpen ? 'Live' : 'Pre-Order');
+        localStorage.setItem('fd_kitchen_notes', $('#fd-kitchen-notes').val());
+
         window.location.href = !isLoggedIn ? "<?php echo esc_url($login_url); ?>?redirect_to=" + encodeURIComponent(window.location.href) : "<?php echo esc_url( home_url('/checkout') ); ?>";
     });
+
+    if(localStorage.getItem('fd_kitchen_notes')) {
+        $('#fd-kitchen-notes').val(localStorage.getItem('fd_kitchen_notes'));
+    }
 
     updateCart();
 });

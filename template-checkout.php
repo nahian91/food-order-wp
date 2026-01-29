@@ -25,8 +25,7 @@ if (isset($_POST['fd_place_order'])) {
     $user_id = get_current_user_id() ?: 0;
     $data['user_id'] = $user_id;
 
-    // Note: Ensure your fd_insert_custom_order function in functions.php 
-    // is updated to handle 'kitchen_notes' and 'delivery_notes' keys.
+    // The fd_insert_custom_order function will receive 'kitchen_notes' from the JS data object
     $order_display_id = fd_insert_custom_order($data);
 
     if ($order_display_id) {
@@ -271,10 +270,6 @@ $rest_discount_pct = get_option('afd_restaurant_discount', '0');
                             <textarea id="address" class="form-control" rows="3" placeholder="Street name, house number, postcode..."><?php echo esc_textarea($user_address); ?></textarea>
                         </div>
                         
-                        <div class="col-md-12 mb-4">
-                            <label class="form-label">Notes for Kitchen</label>
-                            <textarea id="kitchen_notes" class="form-control" rows="2" placeholder="e.g. No onions, extra spicy, allergies..."></textarea>
-                        </div>
                         <div class="col-md-12" id="deliveryNotesArea">
                             <label class="form-label">Notes for Delivery</label>
                             <textarea id="delivery_notes" class="form-control" rows="2" placeholder="e.g. Gate code 1234, knock loudly..."></textarea>
@@ -358,6 +353,7 @@ $rest_discount_pct = get_option('afd_restaurant_discount', '0');
 document.addEventListener('DOMContentLoaded', function(){
     const cart = JSON.parse(localStorage.getItem('fd_cart_save')) || [];
     const scheduledTime = localStorage.getItem('fd_scheduled_time') || 'asap';
+    const kitchenNotes = localStorage.getItem('fd_kitchen_notes') || ''; // RETRIEVING FROM SHORTCODE
     
     const deliveryFee = parseFloat("<?php echo $base_delivery_fee; ?>") || 0;
     const serviceFee = parseFloat("<?php echo $service_fee; ?>") || 0;
@@ -418,9 +414,11 @@ document.addEventListener('DOMContentLoaded', function(){
             email: document.getElementById('email').value.trim(),
             phone: document.getElementById('phone').value.trim(),
             address: (orderType === 'pickup') ? 'COLLECTION' : document.getElementById('address').value.trim(),
-            // CAPTURE BOTH NOTES
-            kitchen_notes: document.getElementById('kitchen_notes').value.trim(),
+            
+            // USE THE VALUE RETRIEVED FROM LOCALSTORAGE
+            kitchen_notes: kitchenNotes, 
             delivery_notes: (orderType === 'pickup') ? '' : document.getElementById('delivery_notes').value.trim(),
+            
             scheduledTime: scheduledTime,
             cart: cart,
             subtotal: document.getElementById('subtotalVal').innerText,
@@ -456,6 +454,7 @@ document.addEventListener('DOMContentLoaded', function(){
             if(result.status === 'success') {
                 localStorage.removeItem('fd_cart_save');
                 localStorage.removeItem('fd_scheduled_time');
+                localStorage.removeItem('fd_kitchen_notes'); // CLEAN UP
                 window.location.href = "<?php echo home_url('/thanks/?order_id='); ?>" + result.order_id;
             } else {
                 alert(result.message);

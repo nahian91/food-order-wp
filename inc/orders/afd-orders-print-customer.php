@@ -5,33 +5,45 @@ if (!defined('ABSPATH')) exit;
  * 1. GET DYNAMIC ORDER DATA FROM CUSTOM TABLE
  */
 global $wpdb;
-$order_id = intval($_GET['order_id']);
+$order_id = isset($_GET['order_id']) ? intval($_GET['order_id']) : 0;
 $table_name = $wpdb->prefix . 'afd_food_orders';
 
-// Fetch the order from the custom database table
 $order = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $order_id));
 
 if (!$order) {
     wp_die('Order not found.');
 }
 
-// Data Handling
-$items          = json_decode($order->items_json, true) ?: [];
+/**
+ * 2. DATA HANDLING WITH SAFETY FALLBACKS
+ * These prevent "Undefined property" warnings if table columns are missing.
+ */
+$items          = json_decode($order->items_json ?? '[]', true) ?: [];
 $display_id     = !empty($order->display_id) ? $order->display_id : 'INV-' . $order->id;
-$order_date     = date('d/m/Y', strtotime($order->order_date));
+$order_date     = !empty($order->order_date) ? date('d/m/Y H:i', strtotime($order->order_date)) : date('d/m/Y H:i');
 
-// Financials from Table Columns
-$subtotal       = floatval($order->subtotal);
-$delivery_fee   = floatval($order->delivery_fee);
-$grand_total    = floatval($order->total_price);
+// Financials
+$subtotal       = floatval($order->subtotal ?? 0);
+$discount_val   = floatval($order->discount_amount ?? 0);
+$service_fee    = floatval($order->service_fee ?? 0);
+$bag_fee        = floatval($order->bag_fee ?? 0);
+$tip            = floatval($order->tip ?? 0);
+$delivery_fee   = floatval($order->delivery_fee ?? 0);
+$grand_total    = floatval($order->total_price ?? 0);
 
-// Customer Info from Table Columns
-$cust_name      = $order->full_name;
-$cust_phone     = $order->phone;
-$cust_email     = $order->email;
-$cust_address   = $order->address;
-$order_type     = $order->order_type; // 'delivery' or 'collection'
-$order_status   = $order->status;
+// Customer Info
+$cust_name      = $order->full_name ?? 'Valued Customer';
+$cust_phone     = $order->phone ?? 'N/A';
+$cust_email     = $order->email ?? '';
+$cust_address   = $order->address ?? '';
+$order_type     = $order->order_type ?? 'delivery'; 
+$order_status   = $order->status ?? 'Confirmed'; // FIXED: Fallback for the warning you saw
+$scheduled      = $order->scheduled_time ?? 'ASAP';
+$pay_method     = $order->payment_method ?? 'Cash';
+
+// Notes
+$k_notes        = $order->kitchen_notes ?? '';
+$d_notes        = $order->delivery_notes ?? '';
 ?>
 
 <!DOCTYPE html>
@@ -40,61 +52,67 @@ $order_status   = $order->status;
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Invoice - #<?php echo esc_html($display_id); ?></title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        /* A4 Page Setup */
         @page { size: A4; margin: 10mm; }
         body { 
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
-            margin: 0; padding: 0; color: #1e293b; background: #fff; line-height: 1.4;
+            font-family: 'Inter', sans-serif; 
+            margin: 0; padding: 0; color: #1e293b; background: #fff; line-height: 1.5;
         }
         .invoice-container { width: 190mm; margin: auto; padding: 5mm; }
 
-        /* Header & Branding */
+        /* Header */
         .header { 
             display: flex; justify-content: space-between; align-items: flex-start; 
-            border-bottom: 3px solid #4338ca; padding-bottom: 20px; margin-bottom: 25px; 
+            border-bottom: 2px solid #e2e8f0; padding-bottom: 30px; margin-bottom: 30px; 
         }
-        .brand h1 { margin: 0; color: #4338ca; font-size: 30px; font-weight: 900; text-transform: uppercase; letter-spacing: -1px; }
-        .brand p { margin: 2px 0; font-size: 13px; color: #64748b; font-weight: 500; }
+        .brand h1 { margin: 0; color: #d63638; font-size: 28px; font-weight: 800; text-transform: uppercase; }
+        .brand p { margin: 2px 0; font-size: 13px; color: #64748b; }
         
         .meta-box { text-align: right; }
-        .meta-box h2 { margin: 0; font-size: 24px; font-weight: 800; color: #0f172a; }
-        .meta-box p { margin: 0; font-size: 14px; color: #64748b; font-weight: 600; }
+        .meta-box h2 { margin: 0; font-size: 24px; font-weight: 800; color: #0f172a; letter-spacing: -0.5px; }
+        .meta-box p { margin: 0; font-size: 14px; color: #64748b; font-weight: 500; }
+        
         .status-badge { 
-            display: inline-block; padding: 3px 12px; border-radius: 5px; font-size: 11px; 
-            font-weight: 800; background: #e0e7ff; color: #4338ca; margin-top: 8px; text-transform: uppercase;
+            display: inline-block; padding: 4px 12px; border-radius: 6px; font-size: 11px; 
+            font-weight: 700; background: #fef2f2; color: #d63638; margin-top: 10px; text-transform: uppercase;
+            border: 1px solid #fee2e2;
         }
 
-        /* Customer Info Grid */
-        .details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-bottom: 30px; }
-        .details-box h3 { font-size: 11px; text-transform: uppercase; color: #94a3b8; letter-spacing: 1px; margin-bottom: 8px; font-weight: 700; }
-        .details-box p { margin: 0; font-size: 15px; font-weight: 600; color: #334155; }
-        .address-box { 
-            background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px; border-radius: 8px; 
-            font-weight: 400 !important; color: #475569 !important; font-size: 14px !important;
-        }
+        /* Information Grid */
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-bottom: 40px; }
+        .info-box h3 { font-size: 11px; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.5px; margin-bottom: 8px; font-weight: 700; }
+        .info-box p { margin: 0; font-size: 14px; font-weight: 600; color: #334155; }
+        .info-box span { display: block; font-size: 13px; color: #64748b; font-weight: 400; }
 
-        /* Items Table */
-        table { width: 100%; border-collapse: collapse; margin-bottom: 25px; }
+        /* Table */
+        table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
         th { background: #f8fafc; color: #64748b; font-size: 11px; text-transform: uppercase; padding: 12px 15px; text-align: left; border-bottom: 2px solid #e2e8f0; }
-        td { padding: 14px 15px; border-bottom: 1px solid #f1f5f9; font-size: 14px; color: #475569; }
-        .col-qty { text-align: center; font-weight: 700; width: 10%; }
-        .col-price { text-align: right; width: 15%; }
-        .col-total { text-align: right; width: 20%; font-weight: 800; color: #0f172a; }
+        td { padding: 15px; border-bottom: 1px solid #f1f5f9; font-size: 14px; color: #334155; vertical-align: top; }
+        .col-qty { text-align: center; font-weight: 700; width: 50px; }
+        .col-total { text-align: right; font-weight: 700; color: #0f172a; width: 100px; }
 
-        /* Summary Area */
-        .footer-flex { display: flex; justify-content: space-between; align-items: flex-start; }
-        .notes-section { width: 55%; font-size: 13px; color: #64748b; }
-        .totals-section { width: 35%; background: #f8fafc; padding: 20px; border-radius: 12px; }
-        .row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 15px; }
-        .row.grand { 
-            margin-top: 12px; padding-top: 12px; border-top: 2px solid #e2e8f0; 
-            color: #4338ca; font-size: 22px; font-weight: 900; 
+        /* Footer Layout */
+        .footer-layout { display: flex; justify-content: space-between; gap: 40px; }
+        .notes-area { flex: 1; }
+        .totals-area { width: 280px; }
+
+        .note-card { 
+            background: #f8fafc; border-radius: 8px; padding: 12px; margin-bottom: 12px; border-left: 4px solid #e2e8f0;
+        }
+        .note-card strong { display: block; font-size: 11px; text-transform: uppercase; color: #64748b; margin-bottom: 3px; }
+        .note-card p { margin: 0; font-size: 13px; color: #475569; font-style: italic; }
+
+        /* Totals */
+        .total-row { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 14px; color: #475569; }
+        .total-row.discount { color: #10b981; font-weight: 600; }
+        .total-row.grand { 
+            margin-top: 15px; padding-top: 15px; border-top: 2px solid #f1f5f9; 
+            color: #d63638; font-size: 20px; font-weight: 800; 
         }
 
-        /* Branding Footer */
         .print-footer { 
-            margin-top: 50px; text-align: center; font-size: 11px; color: #94a3b8; 
+            margin-top: 60px; text-align: center; font-size: 11px; color: #94a3b8; 
             border-top: 1px solid #f1f5f9; padding-top: 20px; 
         }
 
@@ -111,90 +129,122 @@ $order_status   = $order->status;
             <div class="brand">
                 <h1>Spice of India</h1>
                 <p>524 Hertford Road, London, EN3 5SS</p>
-                <p>Phone: +44 208 443 2500</p>
-                <p>Email: info@spiceofindia.online</p>
+                <p>Tel: +44 208 443 2500 | spiceofindia.online</p>
             </div>
             <div class="meta-box">
                 <h2>INVOICE</h2>
-                <p>Order #<?php echo esc_html($display_id); ?></p>
-                <p>Date: <?php echo esc_html($order_date); ?></p>
-                <span class="status-badge"><?php echo esc_html($order->status ?? 'Confirmed'); ?></span>
+                <p>#<?php echo esc_html($display_id); ?></p>
+                <p><?php echo esc_html($order_date); ?></p>
+                <span class="status-badge"><?php echo esc_html($order_status); ?></span>
             </div>
         </header>
 
-        <section class="details-grid">
-            <div class="details-box">
-                <h3>Customer Details</h3>
+        <section class="info-grid">
+            <div class="info-box">
+                <h3>Customer</h3>
                 <p><?php echo esc_html($cust_name); ?></p>
-                <p style="font-weight:400; color:#64748b; font-size: 13px; margin-top:5px;">
-                    <strong>Tel:</strong> <?php echo esc_html($cust_phone); ?><br>
-                    <strong>Email:</strong> <?php echo esc_html($cust_email); ?>
+                <span><?php echo esc_html($cust_phone); ?></span>
+                <span><?php echo esc_html($cust_email); ?></span>
+            </div>
+            <div class="info-box">
+                <h3>Address</h3>
+                <p>
+                    <?php echo (strtolower($order_type) === 'pickup' || strtolower($order_type) === 'collection') ? 'Store Collection' : nl2br(esc_html($cust_address)); ?>
                 </p>
             </div>
-            <div class="details-box">
-                <h3><?php echo ucfirst(esc_html($order_type)); ?> Address</h3>
-                <p class="address-box">
-                    <?php 
-                    if (strtolower($order_type) === 'delivery' && !empty($cust_address)) {
-                        echo nl2br(esc_html($cust_address));
-                    } else {
-                        echo "<strong>STORE COLLECTION</strong><br>524 Hertford Road, London, EN3 5SS";
-                    }
-                    ?>
-                </p>
+            <div class="info-box">
+                <h3>Details</h3>
+                <p><?php echo ucfirst(esc_html($order_type)); ?></p>
+                <span>Scheduled: <strong><?php echo esc_html($scheduled); ?></strong></span>
             </div>
         </section>
 
-        <table class="items-table">
+        <table>
             <thead>
                 <tr>
-                    <th>Item Description</th>
                     <th class="col-qty">Qty</th>
-                    <th class="col-price">Unit Price</th>
+                    <th>Item Description</th>
+                    <th style="text-align: right;">Price</th>
                     <th class="col-total">Total</th>
                 </tr>
             </thead>
             <tbody>
                 <?php if(!empty($items)): foreach($items as $item): 
-                    $price = floatval($item['price']);
-                    $qty   = intval($item['qty']);
-                    $line_total = $price * $qty;
+                    $i_price = floatval($item['price'] ?? 0);
+                    $i_qty   = intval($item['qty'] ?? 1);
                 ?>
                 <tr>
-                    <td><strong><?php echo esc_html($item['name']); ?></strong></td>
-                    <td class="col-qty"><?php echo $qty; ?></td>
-                    <td class="col-price">£<?php echo number_format($price, 2); ?></td>
-                    <td class="col-total">£<?php echo number_format($line_total, 2); ?></td>
+                    <td class="col-qty"><?php echo $i_qty; ?>x</td>
+                    <td><strong><?php echo esc_html($item['name'] ?? 'Unknown Item'); ?></strong></td>
+                    <td style="text-align: right;">£<?php echo number_format($i_price, 2); ?></td>
+                    <td class="col-total">£<?php echo number_format($i_price * $i_qty, 2); ?></td>
                 </tr>
                 <?php endforeach; endif; ?>
             </tbody>
         </table>
 
-        <footer class="footer-flex">
-            <div class="notes-section">
-                <?php if(!empty($order->notes)): ?>
-                    <p style="margin:0 0 5px 0; color:#0f172a; font-weight:700;">Order Notes:</p>
-                    <p style="margin-bottom: 20px;"><?php echo nl2br(esc_html($order->notes)); ?></p>
+        <div class="footer-layout">
+            <div class="notes-area">
+                <?php if(!empty($k_notes)): ?>
+                    <div class="note-card">
+                        <strong>Kitchen Notes:</strong>
+                        <p><?php echo nl2br(esc_html($k_notes)); ?></p>
+                    </div>
                 <?php endif; ?>
-                <p style="margin:0 0 5px 0; color:#0f172a; font-weight:700;">Thank You!</p>
-                <p style="margin:0;">We appreciate your business. If you have any questions about this invoice, please reach out to us at info@spiceofindia.online.</p>
-                <p style="margin-top:15px; font-weight:700; color:#4338ca;">Enjoy your Spice of India meal!</p>
+
+                <?php if(!empty($d_notes) && strtolower($order_type) !== 'pickup'): ?>
+                    <div class="note-card">
+                        <strong>Delivery Notes:</strong>
+                        <p><?php echo nl2br(esc_html($d_notes)); ?></p>
+                    </div>
+                <?php endif; ?>
+                
+                <p style="font-size: 12px; color: #94a3b8; margin-top: 20px;">
+                    Thank you for your order. If you have any allergies, please call us immediately.
+                </p>
             </div>
-            <div class="totals-section">
-                <div class="row">
+
+            <div class="totals-area">
+                <div class="total-row">
                     <span>Subtotal</span>
                     <span>£<?php echo number_format($subtotal, 2); ?></span>
                 </div>
-                <div class="row">
+                <?php if($discount_val > 0): ?>
+                <div class="total-row discount">
+                    <span>Discount</span>
+                    <span>-£<?php echo number_format($discount_val, 2); ?></span>
+                </div>
+                <?php endif; ?>
+                <div class="total-row">
+                    <span>Service Fee</span>
+                    <span>£<?php echo number_format($service_fee, 2); ?></span>
+                </div>
+                <?php if(strtolower($order_type) !== 'pickup' && strtolower($order_type) !== 'collection'): ?>
+                <div class="total-row">
                     <span>Delivery Fee</span>
                     <span>£<?php echo number_format($delivery_fee, 2); ?></span>
                 </div>
-                <div class="row grand">
-                    <span>Total</span>
+                <?php endif; ?>
+                <div class="total-row">
+                    <span>Bag Charge</span>
+                    <span>£<?php echo number_format($bag_fee, 2); ?></span>
+                </div>
+                <?php if($tip > 0): ?>
+                <div class="total-row">
+                    <span>Driver Tip</span>
+                    <span>£<?php echo number_format($tip, 2); ?></span>
+                </div>
+                <?php endif; ?>
+                <div class="total-row grand">
+                    <span>Total Due</span>
                     <span>£<?php echo number_format($grand_total, 2); ?></span>
                 </div>
+                
+                <p style="text-align: right; font-size: 11px; color: #94a3b8; margin-top: 10px;">
+                    Payment: <strong><?php echo strtoupper(esc_html($pay_method)); ?></strong>
+                </p>
             </div>
-        </footer>
+        </div>
 
         <div class="print-footer">
             Spice of India • 524 Hertford Road, London, EN3 5SS • www.spiceofindia.online

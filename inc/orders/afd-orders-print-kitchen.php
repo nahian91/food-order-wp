@@ -76,7 +76,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'print' && $_GET['type'] === '
             .main-id { font-size: 50px; font-weight: 900; display: block; margin: 0; line-height: 1; }
             .type-badge { color: #000; font-size: 32px; font-weight: 900; margin-top: 5px; display: inline-block; padding: 4px 0; text-transform: uppercase; }
             
-            .customer-section { margin-bottom: 15px; line-height: 1.2; text-align: left; }
+            .customer-section { margin-top: 20px; line-height: 1.1; text-align: left; }
             .cust-name { font-size: 28px; font-weight: 900; text-transform: uppercase; display: block; }
             .cust-phone { font-size: 26px; font-weight: bold; display: block; margin: 5px 0; }
             
@@ -91,11 +91,12 @@ if (isset($_GET['action']) && $_GET['action'] === 'print' && $_GET['type'] === '
 
             table { width: 100%; border-collapse: collapse; margin-top: 15px; }
             th { text-align: left; font-size: 18px; border-bottom: 4px solid #000; padding-bottom: 8px; }
-            .item-row td { padding: 15px 0; border-bottom: 2px dashed #000; vertical-align: middle; }
+            .item-row td { padding: 15px 0; border-bottom: 2px dashed #000; vertical-align: top; }
             
             .qty { font-size: 38px; font-weight: 900; width: 60px; line-height: 1; }
-            .item-name { font-size: 24px; font-weight: 900; text-transform: uppercase; line-height: 1.1; padding-left: 5px; }
-            .item-price { font-size: 22px; text-align: right; width: 80px; font-weight: 900; }
+            .item-name { font-size: 24px; font-weight: 900; text-transform: uppercase; line-height: 1.1; padding-left: 5px; display: block; }
+            .unit-price { font-size: 20px; font-weight: bold; padding-left: 5px; display: block; margin-top: 4px; color: #444; }
+            .item-price { font-size: 22px; text-align: right; width: 90px; font-weight: 900; }
             
             .summary-section { margin-top: 20px; border-top: 3px solid #000; padding-top: 12px; }
             .summary-line { display: flex; justify-content: space-between; font-size: 22px; font-weight: bold; margin-bottom: 8px; }
@@ -127,11 +128,6 @@ if (isset($_GET['action']) && $_GET['action'] === 'print' && $_GET['type'] === '
                 </div>
             </div>
 
-            <div class="customer-section">
-                <span class="cust-name"><?php echo esc_html($order->full_name); ?></span>
-                <span class="cust-phone"><?php echo esc_html($order->phone); ?></span>
-            </div>
-
             <?php if (!empty($order->order_notes)) : ?>
                 <div class="notes-box">
                     <span class="notes-label">CUSTOMER REQUEST:</span>
@@ -151,18 +147,19 @@ if (isset($_GET['action']) && $_GET['action'] === 'print' && $_GET['type'] === '
                     <tr>
                         <th>QTY</th>
                         <th>ITEM</th>
-                        <th style="text-align:right;">PRICE</th>
+                        <th style="text-align:right;">TOTAL</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if(is_array($items)) : foreach($items as $item) : 
-                        $item_p = isset($item['price']) ? floatval($item['price']) : 0;
-                        $line_total = $item_p * intval($item['qty']);
+                        $unit_p = isset($item['price']) ? floatval($item['price']) : 0;
+                        $line_total = $unit_p * intval($item['qty']);
                     ?>
                         <tr class="item-row">
                             <td class="qty"><?php echo intval($item['qty']); ?>x</td>
-                            <td class="item-name">
-                                <?php echo esc_html($item['name']); ?>
+                            <td>
+                                <span class="item-name"><?php echo esc_html($item['name']); ?></span>
+                                <span class="unit-price">£<?php echo number_format($unit_p, 2); ?> each</span>
                             </td>
                             <td class="item-price">£<?php echo number_format($line_total, 2); ?></td>
                         </tr>
@@ -202,6 +199,11 @@ if (isset($_GET['action']) && $_GET['action'] === 'print' && $_GET['type'] === '
                     <span>METHOD:</span>
                     <span><?php echo esc_html($payment_method); ?></span>
                 </div>
+            </div>
+
+            <div class="customer-section">
+                <span class="cust-name"><?php echo esc_html($order->full_name); ?></span>
+                <span class="cust-phone"><?php echo esc_html($order->phone); ?></span>
             </div>
 
             <?php if($order->order_type === 'delivery'): ?>
