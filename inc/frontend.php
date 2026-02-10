@@ -83,7 +83,7 @@ function food_best_sellers_shortcode() {
                                         <?php endif; ?>
                                     </div>
                                     <div class="content" style="flex-grow: 1;">
-                                        <div class="top" style="display: flex; justify-content: space-between; border-bottom: 1px dashed #ddd; margin-bottom: 5px; align-items: baseline;">
+                                        <div class="top" style="display: flex; justify-content: space-between; margin-bottom: 5px; align-items: baseline;">
                                             <div class="title"><h4 style="margin:0; font-size:17px; font-weight:600;"><?php the_title(); ?></h4></div>
                                             <div class="price"><span style="color:#d63638; font-weight:700;">
                                                 <?php echo $price ? '£' . number_format(floatval($price), 2) : ''; ?>
