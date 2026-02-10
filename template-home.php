@@ -68,7 +68,7 @@ get_header();?>
 
     <?php echo do_shortcode('[best_sellers_menu]'); ?>
 
-    <?php echo do_shortcode('[food_categories]'); ?>
+    <?php // echo do_shortcode('[food_categories]'); ?>
 
     <div class="testimonial-style-one-area default-padding bg-gray bg-cover text-center" style="background-image: url(<?php echo get_template_directory_uri();?>/assets/img/shape/4.jpg);">
     <div class="container">
