@@ -89,10 +89,6 @@ get_header();?>
                                     <div class="testimonial-style-one">
                                         <div class="item">
                                             <div class="content">
-                                                <div class="tm-proivder-thumb">
-                                                    <img src="<?php echo esc_url($review_image); ?>" alt="Review Image">
-                                                    <img src="<?php echo esc_url($review_image); ?>" alt="Review Image">
-                                                </div>
                                                 <div class="tm-review">
                                                     <i class="fas fa-star"></i>
                                                     <i class="fas fa-star"></i>
@@ -106,6 +102,10 @@ get_header();?>
                                                 <p>
                                                     "<?php echo esc_html($review_description); ?>"
                                                 </p>
+                                                <div class="tm-proivder-thumb">
+                                                    <img src="<?php echo esc_url($review_image); ?>" alt="Review Image">
+                                                    <img src="<?php echo esc_url($review_image); ?>" alt="Review Image">
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
