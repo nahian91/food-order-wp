@@ -223,7 +223,6 @@ function fd_food_items_shortcode() {
         $end_ts   = strtotime($schedule[$current_day]['close']);
         if ($end_ts <= $start_ts) { $end_ts += 86400; }
 
-        // Generate 1-hour slots
         for ($t = $start_ts; $t <= $end_ts; $t += 3600) {
             $time_options[date('H:i', $t)] = date('h:i A', $t);
         }
@@ -295,10 +294,10 @@ function fd_food_items_shortcode() {
     .fd-order-type input:checked + .fd-type-label { background: #d63638; color: #fff; }
     .fd-sticky-panel { background: #fff; border-radius: 25px; padding: 30px; border: 1px solid #eee; box-shadow: 0 20px 50px rgba(0,0,0,0.08); display: flex; flex-direction: column; }
     #fd-cart-list { margin-bottom: 15px; }
-    .fd-minus, .fd-plus { width: 28px; height: 28px; border-radius: 50%; border: 1px solid #ddd; background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .fd-minus, .fd-plus, .fd-item-minus, .fd-item-plus { width: 28px; height: 28px; border-radius: 50%; border: 1px solid #ddd; background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; }
     .fd-cart-item { border-bottom: 1px solid #f8f8f8; padding: 15px 0; }
     .fd-checkout-btn { display: block; text-align: center; background:#d63638; color:#fff !important; padding:18px; border-radius:15px; margin-top:10px; font-weight:800; text-decoration: none !important; box-shadow: 0 10px 20px rgba(214, 54, 56, 0.2); }
-    .order-btn { margin-top: 15px; padding: 12px 30px; background: #d63638; color: #fff; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; }
+    .order-btn { padding: 12px 30px; background: #d63638; color: #fff; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; }
     .fd-summary-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px; color: #666; }
     .fd-summary-row.total-row { border-top: 2px dashed #eee; padding-top: 15px; margin-top: 10px; font-weight: 800; font-size: 22px; color: #1a1a1a; }
     .fd-tip-input { width: 65px; padding: 4px 8px; border: 1px solid #ddd; border-radius: 6px; text-align: right; font-weight: 600; }
@@ -310,6 +309,11 @@ function fd_food_items_shortcode() {
     .fd-kitchen-notes-wrap label { display: block; font-size: 12px; font-weight: 800; text-transform: uppercase; color: #666; margin-bottom: 8px; }
     .fd-kitchen-notes { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #ddd; background: #fff; font-size: 14px; outline: none; resize: none; transition: 0.3s; }
     .fd-kitchen-notes:focus { border-color: #d63638; }
+
+    /* Quantity Styling for Menu Items */
+    .order-btn-align { display: flex; align-items: center; gap: 15px; margin-top: 15px; }
+    .fd-qty-selector { display: flex; align-items: center; gap: 10px; background: #f8f8f8; padding: 5px 10px; border-radius: 10px; border: 1px solid #eee; }
+    .fd-qty-selector span { font-weight: 800; font-size: 16px; min-width: 20px; text-align: center; }
 
     @media (max-width: 991px) { .fd-cart-sidebar { width: 100%; order: -1; } }
 </style>
@@ -347,7 +351,13 @@ function fd_food_items_shortcode() {
                                         <div class="price"><span><?php echo $currency . number_format((float)$price, 2); ?></span></div>
                                     </div>
                                     <div class="bottom"><p><?php echo wp_kses_post($item->post_content); ?></p></div>
+                                    
                                     <div class="order-btn-align">
+                                        <div class="fd-qty-selector">
+                                            <button class="fd-item-minus"><span class="dashicons dashicons-minus"></span></button>
+                                            <span class="fd-item-qty">1</span>
+                                            <button class="fd-item-plus"><span class="dashicons dashicons-plus"></span></button>
+                                        </div>
                                         <button class="order-btn" data-name="<?php echo esc_attr($item->post_title); ?>" data-price="<?php echo esc_attr($price); ?>">Add to Order</button>
                                     </div>
                                 </div>
@@ -500,6 +510,18 @@ jQuery(document).ready(function($){
         localStorage.setItem('fd_cart_save', JSON.stringify(cart));
     }
 
+    // --- Quantity Controls for Menu Items ---
+    $(document).on('click', '.fd-item-plus', function(){
+        let span = $(this).siblings('.fd-item-qty');
+        span.text(parseInt(span.text()) + 1);
+    });
+
+    $(document).on('click', '.fd-item-minus', function(){
+        let span = $(this).siblings('.fd-item-qty');
+        let current = parseInt(span.text());
+        if(current > 1) span.text(current - 1);
+    });
+
     $('#fd-menu-search').on('keyup', function() {
         let val = $(this).val().toLowerCase();
         $('.fd-food-card').each(function() {
@@ -513,8 +535,18 @@ jQuery(document).ready(function($){
 
     $(document).on('click', '.order-btn', function() {
         const name = $(this).data('name'), price = parseFloat($(this).data('price'));
+        const qtyToAdd = parseInt($(this).siblings('.fd-qty-selector').find('.fd-item-qty').text()) || 1;
+        
         const existing = cart.find(i => i.name === name);
-        if(existing) existing.qty += 1; else cart.push({ name, price, qty: 1 });
+        if(existing) {
+            existing.qty += qtyToAdd;
+        } else {
+            cart.push({ name, price, qty: qtyToAdd });
+        }
+        
+        // Reset item quantity display back to 1 after adding
+        $(this).siblings('.fd-qty-selector').find('.fd-item-qty').text(1);
+        
         updateCart();
     });
 
