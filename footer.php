@@ -30,7 +30,7 @@
         </div>
     </div>
 
-    <div class="col-lg-4 col-md-6 mt-50 footer-item">
+    <div class="col-lg-3 col-md-6 mt-50 footer-item">
         <div class="f-item opening-hours">
             <h4 class="widget-title">Opening Hours</h4>
             <ul style="list-style: none; padding: 0; margin: 0; color: #fff;">
@@ -53,7 +53,7 @@
         </div>
     </div>
 
-    <div class="col-lg-3 col-md-6 footer-item mt-50">
+    <div class="col-lg-3 col-md-6 footer-item mt-50 ml-50">
         <div class="f-item contact">
             <h4 class="widget-title">Contact Info</h4>
             <ul>
