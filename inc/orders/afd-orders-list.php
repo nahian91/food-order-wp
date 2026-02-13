@@ -1,8 +1,7 @@
 <?php
 /**
  * AWESOME FOOD DELIVERY - ULTIMATE MASTER DASHBOARD
- * Features: Action Labels, Deep Search, Full Edit, Status Filters, Kitchen & Receipt Printing
- * UPDATED: Pre-order detection, Sound Alarm, and Permanent EDIT Button.
+ * Features: Automatic Kitchen Printing on "Start Cooking", Pre-order detection, Sound Alarm.
  */
 
 if (!defined('ABSPATH')) exit;
@@ -23,7 +22,14 @@ if (isset($_GET['action']) && $_GET['action'] === 'update_status' && isset($_GET
     }
     
     $wpdb->update($table_name, $update_data, ['id' => $order_id]);
-    echo "<script>window.location.href='admin.php?page=awesome_food_delivery&tab=orders';</script>";
+    
+    // Redirect with autoprint flag if status is cooking
+    $redirect_url = 'admin.php?page=awesome_food_delivery&tab=orders';
+    if ($new_status === 'cooking') {
+        $redirect_url .= '&autoprint=' . $order_id;
+    }
+    
+    echo "<script>window.location.href='$redirect_url';</script>";
     exit;
 }
 
@@ -104,7 +110,6 @@ $prep_time = intval(get_option('afd_cooking_time', 20));
 $afon_orders = $wpdb->get_results("SELECT * FROM $table_name ORDER BY id DESC LIMIT 500");
 $server_now = current_time('timestamp'); 
 
-// Count pending/preorders to trigger alarm
 $alarm_trigger_count = 0;
 ?>
 
@@ -112,6 +117,9 @@ $alarm_trigger_count = 0;
     :root { --clr-preorder: #8b5cf6; --clr-pending: #d63638; --clr-cooking: #f59e0b; --clr-rider: #3b82f6; --clr-completed: #46b450; }
     .afd-dashboard { margin-top: 20px; font-family: sans-serif; }
     
+    /* Hidden Iframe for silent printing */
+    #afd-print-frame { display: none; width: 0; height: 0; border: none; }
+
     #afd-alarm-unlock { 
         background: #fffbeb; border: 1px solid #fef3c7; padding: 15px; 
         margin-bottom: 20px; border-radius: 8px; text-align: center; 
@@ -141,6 +149,8 @@ $alarm_trigger_count = 0;
 </style>
 
 <div class="wrap afd-dashboard">
+    <iframe id="afd-print-frame"></iframe>
+
     <audio id="afdOrderAlarm" loop preload="auto">
         <source src="https://assets.mixkit.co/active_storage/sfx/2041/2041-preview.mp3" type="audio/mpeg">
     </audio>
@@ -221,7 +231,6 @@ $alarm_trigger_count = 0;
                         <?php endif; ?>
                         
                         <a class="fd-action-btn" href="<?php echo $url . '&action=view'; ?>"><span class="dashicons dashicons-visibility"></span> VIEW</a>
-                        
                         <a class="fd-action-btn" href="<?php echo $url . '&action=edit'; ?>"><span class="dashicons dashicons-edit"></span> EDIT</a>
                         
                         <a class="fd-action-btn" href="<?php echo $url . '&action=print&type=kitchen'; ?>" target="_blank"><span class="dashicons dashicons-media-text"></span> KITCHEN</a>
@@ -237,18 +246,39 @@ $alarm_trigger_count = 0;
 
 <script>
 jQuery(document).ready(function($){
+    // Initialize DataTable
     var table = $('#afon-orders-table').DataTable({
         "order": [[0, "desc"]],
         "pageLength": 50,
         "language": { "search": "Quick Search:" }
     });
 
+    // Auto-Print Trigger Logic
+    const urlParams = new URLSearchParams(window.location.search);
+    const autoPrintID = urlParams.get('autoprint');
+
+    if (autoPrintID) {
+        const printUrl = "admin.php?page=awesome_food_delivery&tab=orders&order_id=" + autoPrintID + "&action=print&type=kitchen";
+        $('#afd-print-frame').attr('src', printUrl);
+
+        $('#afd-print-frame').on('load', function() {
+            this.contentWindow.focus();
+            this.contentWindow.print();
+            
+            // Clean URL after printing
+            const cleanUrl = window.location.href.split('&autoprint=')[0];
+            window.history.replaceState({}, document.title, cleanUrl);
+        });
+    }
+
+    // Filter Buttons
     $('.filter-btn').on('click', function(){
         $('.filter-btn').removeClass('active');
         $(this).addClass('active');
         table.column(2).search($(this).data('status')).draw();
     });
 
+    // Clock/Timer Logic
     var sT = <?php echo $server_now; ?>, bT = Math.floor(Date.now() / 1000), gap = sT - bT;
     function updateClocks() {
         var now = Math.floor(Date.now() / 1000) + gap;
@@ -263,6 +293,7 @@ jQuery(document).ready(function($){
     }
     setInterval(updateClocks, 1000); updateClocks();
 
+    // Sound Alarm Logic
     const audio = document.getElementById('afdOrderAlarm');
     const unlockBtn = document.getElementById('afd-alarm-unlock');
     const newOrders = <?php echo (int)$alarm_trigger_count; ?>;
@@ -280,6 +311,7 @@ jQuery(document).ready(function($){
         if (newOrders > 0) { audio.play(); }
     });
 
+    // Auto Refresh countdown
     var refresh = 30;
     setInterval(function(){
         refresh--; $('#timer-count').text(refresh);
