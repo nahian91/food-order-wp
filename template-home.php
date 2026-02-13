@@ -66,7 +66,7 @@ get_header();?>
     </div>  
 </div>
 
-    <?php echo do_shortcode('[best_sellers_menu]'); ?>
+    <?php echo do_shortcode('[fd_food_items]'); ?>
 
     <?php // echo do_shortcode('[food_categories]'); ?>
 

@@ -2,6 +2,199 @@
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 /**
+ * SHORTCODE: Best Sellers / Featured Menu
+ */
+function food_best_sellers_shortcode() {
+    ob_start();
+
+    // 1. Get Categories marked as Featured using your exact meta key 'fd_is_featured'
+    $featured_categories = get_terms([
+        'taxonomy'   => 'food_category',
+        'hide_empty' => true,
+        'meta_query' => [
+            [
+                'key'     => 'fd_is_featured',
+                'value'   => '1',
+                'compare' => '='
+            ]
+        ]
+    ]);
+
+    // Fallback: If no categories are toggled "Featured", show the first 2 available
+    if (empty($featured_categories) || is_wp_error($featured_categories)) {
+        $featured_categories = get_terms([
+            'taxonomy'   => 'food_category',
+            'hide_empty' => true,
+            'number'     => 2
+        ]);
+    }
+    ?>
+
+    <div class="container pb-5">
+        <div class="row">
+            <div class="col-lg-8 offset-lg-2">
+                <div class="site-heading text-center">
+                    <h4 class="sub-title" style="color: #d63638; font-weight: 600;">Awesome Food</h4>
+                    <h2 class="title">Popular Food of our Menus</h2>
+                    <div class="mt-4 mb-5">
+                        <a href="<?php echo home_url('/menu'); ?>" class="btn-all-menus">VIEW ALL MENUS</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <?php 
+            foreach ($featured_categories as $cat) : 
+                
+                // 2. Fetch 3 Random items using your exact post_type 'food_item'
+                $products = new WP_Query([
+                    'post_type'      => 'food_item', 
+                    'posts_per_page' => 3,
+                    'orderby'        => 'rand',
+                    'tax_query'      => [[
+                        'taxonomy' => 'food_category',
+                        'field'    => 'term_id',
+                        'terms'    => $cat->term_id,
+                    ]],
+                ]);
+
+                if ($products->have_posts()) :
+            ?>
+                <div class="col-lg-6 mb-5">
+                    <div class="food-menu-style-two-content food-menu">
+                        <h4 class="sub-heading" style="border-left: 4px solid #d63638; padding-left: 15px; margin-bottom: 25px; font-weight:700; text-transform: uppercase;">
+                            <?php echo esc_html($cat->name); ?>
+                        </h4>
+                        
+                        <ul class="meal-items" style="padding: 0; margin: 0;">
+                            <?php 
+                            while ($products->have_posts()) : $products->the_post(); 
+                                $price = get_post_meta(get_the_ID(), 'price', true); 
+                            ?>
+                                <li style="list-style: none; display: flex; align-items: flex-start; margin-bottom: 25px;">
+                                    <div class="thumbnail" style="flex-shrink: 0; margin-right: 20px;">
+                                        <?php if (has_post_thumbnail()) : 
+                                            the_post_thumbnail([70, 70], ['style' => 'width:70px; height:70px; object-fit:cover; border-radius:8px;']); 
+                                        else : ?>
+                                            <div style="width:70px; height:70px; background:#f0f0f0; border-radius:8px; display:flex; align-items:center; justify-content:center;">
+                                                <span class="dashicons dashicons-format-image" style="color:#ccc;"></span>
+                                            </div>
+                                        <?php endif; ?>
+                                    </div>
+                                    <div class="content" style="flex-grow: 1;">
+                                        <div class="top" style="display: flex; justify-content: space-between; margin-bottom: 5px; align-items: baseline;">
+                                            <div class="title"><h4 style="margin:0; font-size:17px; font-weight:600;"><?php the_title(); ?></h4></div>
+                                            <div class="price"><span style="color:#d63638; font-weight:700;">
+                                                <?php echo $price ? '£' . number_format(floatval($price), 2) : ''; ?>
+                                            </span></div>
+                                        </div>
+                                        <div class="bottom">
+                                            <p style="margin:0; font-size:14px; color:#666; line-height: 1.4;">
+                                                <?php echo wp_trim_words(get_the_excerpt(), 12); ?>
+                                            </p>
+                                        </div>
+                                    </div>
+                                </li>
+                            <?php 
+                                endwhile; 
+                                wp_reset_postdata(); 
+                            ?>
+                        </ul>
+                    </div>
+                </div>
+            <?php 
+                endif; 
+            endforeach; 
+            ?>
+        </div>
+    </div>
+    <?php
+    return ob_get_clean();
+}
+add_shortcode('best_sellers_menu', 'food_best_sellers_shortcode');
+
+
+/**
+ * SHORTCODE: Category Carousel
+ */
+function fd_dynamic_category_carousel_shortcode() {
+    ob_start();
+    
+    $terms = get_terms([
+        'taxonomy'   => 'food_category',
+        'hide_empty' => false,
+    ]);
+
+    if (empty($terms) || is_wp_error($terms)) return '';
+    ?>
+
+    <div class="food-cat-area default-padding bg-gray" style="background-image: url(<?php echo get_template_directory_uri();?>/assets/img/shape/3.png);">
+        <div class="container">
+            <div class="row">
+                <div class="col-lg-8 offset-lg-2">
+                    <div class="site-heading text-center">
+                        <h4 class="sub-title">Food Category</h4>
+                        <h2 class="title split-text">Top category of our menus</h2>
+                        <div class="mt-4">
+                            <a href="<?php echo home_url('/menu'); ?>" class="btn-all-menus">VIEW ALL MENUS</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="container">
+            <div class="row">
+                <div class="col-lg-12">
+                    <div class="food-cat-carousel swiper">
+                        <div class="swiper-wrapper">
+                            <?php foreach ($terms as $term) : 
+                                $img_id = get_term_meta($term->term_id, 'fd_category_image', true);
+                                $img_url = $img_id ? wp_get_attachment_image_url($img_id, 'large') : get_template_directory_uri() . '/assets/img/category/1.jpg';
+                                $target_link = home_url('/menu/#cat-' . $term->slug);
+                                ?>
+                                <div class="swiper-slide">
+                                    <div class="food-cat-item">
+                                        <a href="<?php echo esc_url($target_link); ?>" style="background-image: url(<?php echo esc_url($img_url); ?>);">
+                                            <h4><?php echo esc_html($term->name); ?></h4>
+                                            <span><?php echo $term->count; ?> Items</span>
+                                        </a>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <div class="swiper-pagination"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            if (typeof Swiper !== 'undefined') {
+                new Swiper('.food-cat-carousel', {
+                    loop: true,
+                    slidesPerView: 1,
+                    spaceBetween: 20,
+                    autoplay: { delay: 4000 },
+                    pagination: { el: '.swiper-pagination', clickable: true },
+                    breakpoints: {
+                        640: { slidesPerView: 2 },
+                        991: { slidesPerView: 3 },
+                        1200: { slidesPerView: 4 }
+                    }
+                });
+            }
+        });
+    </script>
+    <?php
+    return ob_get_clean();
+}
+add_shortcode('food_categories', 'fd_dynamic_category_carousel_shortcode');
+
+
+/**
  * SHORTCODE: Main Food Ordering System (Menu + Cart)
  * Features: Original Desktop View + Mobile Hamburger Categories + Mobile Slide-out Cart
  */
@@ -76,58 +269,28 @@ function fd_food_items_shortcode() {
     .fd-menu-search:focus { border-color: #d63638; box-shadow: 0 5px 20px rgba(214, 54, 56, 0.15); }
     .fd-search-icon { position: absolute; left: 20px; top: 50%; transform: translateY(-50%); color: #aaa; font-size: 20px; }
     
-    .fd-category-grid {
-	grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-	gap: 15px;
-	width: 220px;
-}
-    .fd-cat-grid-item {
-	text-decoration: none !important;
-	/* text-align: center; */
-	transition: 0.3s ease;
-	display: flex;
-	align-items: center;
-	gap: 15px;
-	margin-bottom: 15px;
-	border-bottom: 1px solid #ddd;
-	padding-bottom: 15px;
-}
+    .fd-category-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 15px; margin-bottom: 50px; }
+    .fd-cat-grid-item { text-decoration: none !important; text-align: center; transition: 0.3s ease; display: block; }
     .fd-cat-grid-item:hover { transform: translateY(-5px); }
-    .fd-cat-grid-thumb { width: 60px; height: 60px; border-radius: 50%; background: #fff; overflow: hidden; border: 4px solid #fff; box-shadow: 0 10px 20px rgba(0,0,0,0.08); display: flex; align-items: center; justify-content: center; }
+    .fd-cat-grid-thumb { width: 60px; height: 60px; border-radius: 50%; background: #fff; margin: 0 auto 8px; overflow: hidden; border: 4px solid #fff; box-shadow: 0 10px 20px rgba(0,0,0,0.08); display: flex; align-items: center; justify-content: center; }
     .fd-cat-grid-thumb img { width: 100%; height: 100%; object-fit: cover; }
     .fd-cat-grid-item span { display: block; font-weight: 700; color: #1a1a1a; font-size: 14px; }
     
     .fd-container { display: flex; flex-wrap: wrap; gap: 40px; }
-    .fd-menu-section { width: 480px; }
+    .fd-menu-section { flex: 1; min-width: 320px; }
     .fd-cart-sidebar { width: 380px; }
     
     .sub-heading { font-size: 28px; font-weight: 800; margin-bottom: 30px; color: #1a1a1a; border-left: 6px solid #d63638; padding-left: 20px; margin-top: 40px; }
     .meal-items { list-style: none; padding: 0; margin: 0; }
     .meal-items li { display: flex; align-items: flex-start; background: #fff; padding: 25px; border-radius: 20px; margin-bottom: 25px; border: 1px solid #f1f1f1; transition: 0.3s; box-shadow: 0 4px 6px rgba(0,0,0,0.02); }
-    .meal-items li .thumbnail {
-	width: 80px;
-	height: 80px;
-	min-width: 80px;
-	margin-right: 10px;
-	overflow: hidden;
-	border-radius: 15px;
-}
+    .meal-items li .thumbnail { width: 130px; height: 130px; min-width: 130px; margin-right: 30px; overflow: hidden; border-radius: 15px; }
     .meal-items li .thumbnail img { width: 100%; height: 100%; object-fit: cover; }
     .meal-items li .content { flex: 1; }
     .meal-items li .content .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
     .meal-items li .content .top .title h4 { margin: 0; font-size: 21px; font-weight: 700; color: #1a1a1a; }
     .meal-items li .content .top .price span { color: #d63638; font-weight: 800; font-size: 21px; }
     
-    .fd-sticky-panel {
-	background: #fff;
-	border-radius: 25px;
-	padding: 15px;
-	border: 1px solid #eee;
-	box-shadow: 0 20px 50px rgba(0,0,0,0.08);
-	display: flex;
-	flex-direction: column;
-	width: 320px;
-}
+    .fd-sticky-panel { background: #fff; border-radius: 25px; padding: 30px; border: 1px solid #eee; box-shadow: 0 20px 50px rgba(0,0,0,0.08); display: flex; flex-direction: column; }
     .fd-order-type { display: flex; gap: 10px; margin-bottom: 15px; background: #f0f0f1; padding: 6px; border-radius: 12px; }
     .fd-type-label { flex: 1; text-align: center; cursor: pointer; padding: 10px; border-radius: 8px; font-weight: 700; transition: 0.3s; color: #666; }
     .fd-order-type input { display: none; }
@@ -139,7 +302,7 @@ function fd_food_items_shortcode() {
     .fd-summary-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px; color: #666; }
     .fd-summary-row.total-row { border-top: 2px dashed #eee; padding-top: 15px; margin-top: 10px; font-weight: 800; font-size: 22px; color: #1a1a1a; }
     .fd-qty-selector { display: flex; align-items: center; gap: 10px; background: #f8f8f8; padding: 5px 10px; border-radius: 10px; border: 1px solid #eee; }
-    .fd-qty-selector span { font-weight: 800; font-size: 16px; min-width: 20px; text-align: center;line-height:22px }
+    .fd-qty-selector span { font-weight: 800; font-size: 16px; min-width: 20px; text-align: center; }
     .order-btn-align { display: flex; align-items: center; gap: 15px; margin-top: 15px; }
     .fd-minus, .fd-plus, .fd-item-minus, .fd-item-plus { width: 28px; height: 28px; border-radius: 50%; border: 1px solid #ddd; background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 
@@ -160,9 +323,6 @@ function fd_food_items_shortcode() {
     @media (max-width: 991px) {
         .fd-category-grid { display: none; }
         .fd-mobile-cat-header { display: flex; }
-        .fd-menu-section {
-	width: 100%;
-}
         
         /* Mobile Slide-out Cart */
         .fd-cart-sidebar {
@@ -196,38 +356,13 @@ function fd_food_items_shortcode() {
     @media (min-width: 992px) {
         .fd-bottom-cart-bar, .fd-mobile-cart-header, .fd-overlay { display: none !important; }
     }
-    @media (max-width: 991px) {
-  .fd-mobile-cat-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px 15px;
-    background: #fff;
-    width: 100%;
-    z-index: 1000;
-    border-bottom: 1px solid #eee;
-    box-sizing: border-box; /* Crucial for full-width padding */
-  }
-
-  /* The Sticky State */
-  .fd-mobile-cat-header.is-sticky {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0; /* Ensures it stretches edge-to-edge */
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    animation: slideDown 0.3s ease-out;
-    border-bottom: none;
-  }
-}
-
-@keyframes slideDown {
-  from { transform: translateY(-100%); }
-  to { transform: translateY(0); }
-}
 </style>
 
 <div class="fd-main-wrapper">
+    <div class="fd-search-container">
+        <span class="fd-search-icon">🔍</span>
+        <input type="text" id="fd-menu-search" class="fd-menu-search" placeholder="Search for your favorite food...">
+    </div>
 
     <div class="fd-mobile-cat-header">
         <div class="fd-cat-trigger" id="fd-open-cats">
@@ -237,12 +372,7 @@ function fd_food_items_shortcode() {
         <div style="font-size: 12px; font-weight: 700; color: #666;">Select a section</div>
     </div>
 
-    <div class="fd-container">
-        <div class="fd-category-grid">
-            <div class="fd-search-container">
-        <span class="fd-search-icon">🔍</span>
-        <input type="text" id="fd-menu-search" class="fd-menu-search" placeholder="Search for your favorite food...">
-    </div>
+    <div class="fd-category-grid">
         <?php foreach ($items_by_cat as $slug => $cat) : ?>
             <a href="#cat-<?php echo esc_attr($slug); ?>" class="fd-cat-grid-item">
                 <div class="fd-cat-grid-thumb"><img src="<?php echo esc_url($cat['img']); ?>" alt="Category"></div>
@@ -250,6 +380,8 @@ function fd_food_items_shortcode() {
             </a>
         <?php endforeach; ?>
     </div>
+
+    <div class="fd-container">
         <div class="fd-menu-section">
             <?php foreach ($items_by_cat as $slug => $cat_data) : ?>
                 <div id="cat-<?php echo esc_attr($slug); ?>" class="food-menu">
@@ -270,7 +402,7 @@ function fd_food_items_shortcode() {
                                     <div class="order-btn-align">
                                         <div class="fd-qty-selector">
                                             <button class="fd-item-minus"><span class="dashicons dashicons-minus"></span></button>
-                                            <span class="fd-item-qty">0</span>
+                                            <span class="fd-item-qty">1</span>
                                             <button class="fd-item-plus"><span class="dashicons dashicons-plus"></span></button>
                                         </div>
                                         <button class="order-btn" data-name="<?php echo esc_attr($item->post_title); ?>" data-price="<?php echo esc_attr($price); ?>">Add to Order</button>
@@ -417,115 +549,39 @@ jQuery(document).ready(function($){
     $('#fd-mobile-trigger').on('click', function() { $('#fd-cart-sidebar, #fd-overlay').addClass('active'); });
     $('#fd-close-cats, .fd-close-cart, #fd-overlay, .fd-drawer-cat-link').on('click', function() { closeDrawers(); });
 
-    $(window).scroll(function() {
-        const header = $('.fd-mobile-cat-header');
-        const scroll = $(window).scrollTop();
+    // --- Original UI Interactions ---
+    $(document).on('click', '.fd-item-plus', function(){ let s = $(this).siblings('.fd-item-qty'); s.text(parseInt(s.text()) + 1); });
+    $(document).on('click', '.fd-item-minus', function(){ let s = $(this).siblings('.fd-item-qty'); if(parseInt(s.text()) > 1) s.text(parseInt(s.text()) - 1); });
 
-        if (scroll >= 50) {
-            header.addClass('is-sticky');
-        } else {
-            header.removeClass('is-sticky');
-        }
+    $(document).on('click', '.order-btn', function() {
+        const name = $(this).data('name'), price = parseFloat($(this).data('price'));
+        const qty = parseInt($(this).siblings('.fd-qty-selector').find('.fd-item-qty').text());
+        const exist = cart.find(i => i.name === name);
+        if(exist) exist.qty += qty; else cart.push({ name, price, qty });
+        $(this).siblings('.fd-qty-selector').find('.fd-item-qty').text(1);
+        updateCart();
     });
 
-    // --- Fixed UI Interactions (Initial Value 0) ---
-
-// 1. Menu Item Plus
-$(document).on('click', '.fd-item-plus', function() {
-    let s = $(this).siblings('.fd-item-qty');
-    s.text(parseInt(s.text()) + 1);
-});
-
-// 2. Menu Item Minus (Allows going down to 0)
-$(document).on('click', '.fd-item-minus', function() {
-    let s = $(this).siblings('.fd-item-qty');
-    let val = parseInt(s.text());
-    if (val > 0) s.text(val - 1);
-});
-
-// 3. Add to Cart Button Logic (With "Added!" feedback)
-$(document).on('click', '.order-btn', function() {
-    const $btn = $(this); // Capture the button element
-    const name = $btn.data('name');
-    const price = parseFloat($btn.data('price'));
-    
-    // Check quantity
-    const $qtyElem = $btn.siblings('.fd-qty-mini, .fd-qty-selector').find('.fd-item-qty');
-    const qty = parseInt($qtyElem.text());
-
-    if (qty <= 0) {
-        alert("Please select a quantity first");
-        return;
-    }
-
-    // Update Cart Array
-    const exist = cart.find(i => i.name === name);
-    if (exist) {
-        exist.qty += qty;
-    } else {
-        cart.push({ name, price, qty });
-    }
-
-    // --- FEEDBACK ANIMATION ---
-    const originalText = $btn.text(); // Save current text (e.g., "Add")
-    $btn.text('Added!').prop('disabled', true).addClass('added-success');
-    
-    setTimeout(function() {
-        $btn.text(originalText).prop('disabled', false).removeClass('added-success');
-    }, 1500); // 1.5 seconds delay
-    // --------------------------
-
-    $qtyElem.text(0); // Reset counter to 0
-    updateCart();
-});
-
-// 4. Cart Sidebar Plus/Minus
-$(document).on('click', '.fd-plus', function() { 
-    cart[$(this).data('index')].qty += 1; 
-    updateCart(); 
-});
-
-$(document).on('click', '.fd-minus', function() {
-    const idx = $(this).data('index');
-    if (cart[idx].qty > 1) {
-        cart[idx].qty -= 1; 
-    } else {
-        cart.splice(idx, 1); 
-    }
-    updateCart();
-});
-
-// 5. Delete & Settings
-$(document).on('click', '.fd-delete', function() { 
-    cart.splice($(this).data('index'), 1); 
-    updateCart(); 
-});
-
-$('input[name="order_type"], #fd-tip-amount').on('change input', updateCart);
-
-// 6. Search Filter
-$('#fd-menu-search').on('keyup', function() {
-    let val = $(this).val().toLowerCase();
-    $('.fd-food-card').each(function() { 
-        $(this).toggle($(this).data('title').indexOf(val) > -1); 
+    $(document).on('click', '.fd-plus', function() { cart[$(this).data('index')].qty += 1; updateCart(); });
+    $(document).on('click', '.fd-minus', function() {
+        const idx = $(this).data('index');
+        if(cart[idx].qty > 1) cart[idx].qty -= 1; else cart.splice(idx, 1);
+        updateCart();
     });
-});
+    $(document).on('click', '.fd-delete', function() { cart.splice($(this).data('index'), 1); updateCart(); });
+    
+    $('input[name="order_type"], #fd-tip-amount').on('change input', updateCart);
+    $('#fd-menu-search').on('keyup', function() {
+        let val = $(this).val().toLowerCase();
+        $('.fd-food-card').each(function() { $(this).toggle($(this).data('title').indexOf(val) > -1); });
+    });
 
-// 7. Checkout Trigger
-$(document).on('click', '#fd-checkout-trigger', function(e) {
-    e.preventDefault();
-    if (cart.length === 0) { alert("Your cart is empty"); return; }
-    
-    localStorage.setItem('fd_scheduled_time', $('#fd-scheduled-time').val());
-    localStorage.setItem('fd_kitchen_notes', $('#fd-kitchen-notes').val());
-    
-    // Redirect logic
-    const isLoggedIn = <?php echo is_user_logged_in() ? 'true' : 'false'; ?>;
-    const checkoutUrl = "<?php echo home_url('/checkout'); ?>";
-    const loginUrl = "<?php echo site_url('/login/'); ?>";
-    
-    window.location.href = isLoggedIn ? checkoutUrl : loginUrl + "?redirect_to=" + encodeURIComponent(window.location.href);
-});
+    $(document).on('click', '#fd-checkout-trigger', function(e) {
+        e.preventDefault();
+        localStorage.setItem('fd_scheduled_time', $('#fd-scheduled-time').val());
+        localStorage.setItem('fd_kitchen_notes', $('#fd-kitchen-notes').val());
+        window.location.href = <?php echo $is_logged_in; ?> ? "<?php echo home_url('/checkout'); ?>" : "<?php echo $login_url; ?>?redirect_to=" + encodeURIComponent(window.location.href);
+    });
 
     updateCart();
 });

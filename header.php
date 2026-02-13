@@ -117,15 +117,21 @@
                 </div>
 
                 <div class="collapse navbar-collapse" id="navbar-menu">
-                    <?php
-                        wp_nav_menu( array(
-                            'theme_location' => 'menu-1',
-                            'menu_class'     => 'nav navbar-nav navbar-right',
-                            'container'      => false,
-                            'fallback_cb'    => false,
-                        ) );
-                    ?>
-                </div>
+    <div class="navbar-mobile-header d-lg-none">
+        <button type="button" class="navbar-toggle" data-toggle="collapse" data-target="#navbar-menu">
+            <i class="fa fa-times"></i>
+        </button>
+    </div>
+
+    <?php
+        wp_nav_menu( array(
+            'theme_location' => 'menu-1',
+            'menu_class'     => 'nav navbar-nav navbar-right',
+            'container'      => false,
+            'fallback_cb'    => false,
+        ) );
+    ?>
+</div>
 
                 <div class="attr-right">
                     <ul class="attr-nav-flex">

@@ -3440,11 +3440,11 @@ nav.navbar.validnavs .navbar-collapse.collapse button {
 	width: 35px;
 	line-height: 32px;
 	text-align: center;
-	border: 2px solid #dddddd;
+	border: 2px solid red;
 	border-radius: 50%;
-	color: var(--dark);
+	color: red;
 	font-size: 16px;
-	top: 40px;
+	top: 2cqmin;
 	padding: 0;
 }
 
@@ -3452,6 +3452,7 @@ nav.navbar.validnavs .navbar-collapse.collapse button i {
 	font-weight: 500;
 	font-size: 15px;
 	margin: 0;
+	color: red;
 }
 
 .navbar .attr-right.flex .attr-nav {

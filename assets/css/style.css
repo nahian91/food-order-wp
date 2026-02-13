@@ -4028,7 +4028,6 @@ ul.footer-social li a:hover {
 }
 
 .fd-minus, .fd-plus {
-  padding: 5px 25px;
   display: block;
 }
 .fd-delete {
@@ -4076,4 +4075,54 @@ ul.footer-social li a:hover {
   display: flex;
   justify-content: center;
   gap: 20px;
+}
+
+
+/* Styling for the temporary 'Added!' state */
+.order-btn.added-success {
+    background-color: #28a745 !important; /* Green */
+    border-color: #28a745 !important;
+    color: #fff !important;
+    cursor: default;
+}
+
+@media (max-width: 991px) {
+    /* Container for the close icon */
+    .navbar-mobile-header {
+        padding: 15px 20px;
+        display: flex;
+        justify-content: flex-end; /* Aligns "X" to the right */
+        border-bottom: 1px solid #eee;
+    }
+
+    /* Styling the close button */
+    .navbar-mobile-header .navbar-toggle {
+        background: none;
+        border: none;
+        font-size: 24px;
+        color: #333;
+        cursor: pointer;
+        padding: 0;
+        margin: 0;
+    }
+
+    .navbar-mobile-header .navbar-toggle:hover {
+        color: #d63638; /* Branding color */
+    }
+
+    /* If your navbar-collapse is a side drawer */
+    .navbar-collapse {
+        position: fixed;
+        top: 0;
+        left: -100%; /* Slide in effect */
+        width: 280px;
+        height: 100vh;
+        background: #fff;
+        transition: all 0.3s ease;
+        display: block !important;
+    }
+
+    .navbar-collapse.in, .navbar-collapse.show {
+        left: 0;
+    }
 }

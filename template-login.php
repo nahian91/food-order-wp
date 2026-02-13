@@ -15,7 +15,7 @@ if (is_user_logged_in()) {
 $login_error = '';
 if(isset($_POST['fd_login_submit'])){
     
-    // Capture the redirect URL if they came from the Cart/Checkout
+    // Capture the redirect URL
     $redirect_to = isset($_GET['redirect_to']) ? esc_url($_GET['redirect_to']) : home_url('/account/');
 
     $creds = [
@@ -48,7 +48,15 @@ if(isset($_POST['fd_login_submit'])){
     .auth-btn { background: #d63638; color: #fff; border: none; width: 100%; padding: 15px; border-radius: 10px; font-weight: 700; font-size: 17px; margin-top: 10px; transition: 0.3s; cursor: pointer; }
     .auth-btn:hover { background: #b52a2c; transform: translateY(-2px); box-shadow: 0 5px 15px rgba(214, 54, 56, 0.3); }
     
+    /* Guest Checkout Button */
+    .guest-btn { background: #fff; color: #333; border: 2px solid #ddd; width: 100%; padding: 12px; border-radius: 10px; font-weight: 700; font-size: 15px; margin-top: 15px; transition: 0.3s; cursor: pointer; text-decoration: none; display: inline-block; text-align: center; }
+    .guest-btn:hover { background: #f9f9f9; border-color: #bbb; }
+
     .alert-custom { border-left: 4px solid #d63638; background: #fff5f5; color: #d63638; padding: 15px; border-radius: 8px; font-size: 14px; }
+    .hr-text { display: flex; align-items: center; text-align: center; color: #aaa; margin: 30px 0; font-size: 13px; }
+    .hr-text::before, .hr-text::after { content: ''; flex: 1; border-bottom: 1px solid #eee; }
+    .hr-text:not(:empty)::before { margin-right: .5em; }
+    .hr-text:not(:empty)::after { margin-left: .5em; }
 </style>
 
 <div class="auth-wrapper">
@@ -107,7 +115,16 @@ if(isset($_POST['fd_login_submit'])){
                                 <button type="submit" name="fd_login_submit" class="auth-btn">Sign In</button>
                             </form>
 
-                            <div class="text-center mt-5">
+                            <div class="hr-text">OR</div>
+                            
+                            <div class="text-center">
+                                <a href="<?php echo home_url('/checkout'); ?>" class="guest-btn">
+                                    <i class="fas fa-shopping-basket me-2"></i> Continue as Guest
+                                </a>
+                                <p class="text-muted mt-3" style="font-size: 13px;">No account needed to place an order.</p>
+                            </div>
+
+                            <div class="text-center mt-5" style="border-top: 1px solid #eee; padding-top: 20px;">
                                 <p class="text-muted mb-0">Don't have an account yet?</p> 
                                 <a href="<?php echo home_url('/registration'); ?>" style="color: #d63638; font-weight: 700; text-decoration: none; font-size: 16px;">Create Account Now</a>
                             </div>
