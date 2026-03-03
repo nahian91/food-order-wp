@@ -1,12 +1,6 @@
 <?php
 /**
- * Edit Order - Complete Master Version
- * Features: 
- * - DB Auto-Repair (Fixes Undefined Property & Warning Errors)
- * - Live Financials (Items + Charges + Tips - Editable Discounts)
- * - Two-Way Discount Calculation (% <-> £)
- * - Kitchen Timer Sync
- * - Dual Notes (Kitchen & Delivery)
+ * Edit & View Order - Complete Master Version
  */
 
 if (!defined('ABSPATH')) exit;
@@ -21,14 +15,79 @@ if (!$afon_order_id) {
 }
 
 /*--------------------------------------------------------------
-# 1. DATABASE AUTO-REPAIR
-# Checks and creates missing columns to prevent PHP Warnings
+# 0. INVOICE GENERATION LOGIC (PDF/Print)
+--------------------------------------------------------------*/
+if (isset($_GET['action']) && $_GET['action'] === 'print' && isset($_GET['type']) && $_GET['type'] === 'customer') {
+    $order = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $afon_order_id));
+    if (!$order) wp_die('Order not found.');
+
+    $items = json_decode($order->items_json, true) ?: [];
+    
+    echo '<style>
+        body { font-family: sans-serif; padding: 20px; color: #333; }
+        .invoice-box { max-width: 800px; margin: auto; border: 1px solid #eee; padding: 30px; }
+        .invoice-box table { width: 100%; text-align: left; border-collapse: collapse; margin-top: 20px; }
+        .invoice-box table td, .invoice-box table th { padding: 10px; border-bottom: 1px solid #eee; }
+        .invoice-box table th { background: #f9f9f9; }
+        .total-row { font-weight: bold; font-size: 1.2em; border-top: 2px solid #333; }
+        .no-print { background: #2271b1; color: white; padding: 10px 20px; border: none; cursor: pointer; text-decoration: none; border-radius: 4px; display: inline-block; margin-bottom: 20px;}
+        @media print { .no-print { display: none; } }
+    </style>';
+
+    echo '<div class="invoice-box">';
+    echo '<button class="no-print" onclick="window.print()">Print Invoice</button>';
+    echo '<h1>Invoice #' . esc_html(!empty($order->display_id) ? $order->display_id : 'REC-'.$order->id) . '</h1>';
+    echo '<p>Date: ' . esc_html($order->order_date) . '<br>';
+    echo 'Customer: ' . esc_html($order->full_name) . '<br>';
+    echo 'Phone: ' . esc_html($order->phone) . '<br>';
+    echo 'Email: ' . esc_html($order->customer_email) . '</p>';
+
+    echo '<table><thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody>';
+    foreach ($items as $item) {
+        echo '<tr>
+            <td>' . esc_html($item['name']) . '</td>
+            <td>' . intval($item['qty']) . '</td>
+            <td>£' . number_format($item['price'], 2) . '</td>
+            <td>£' . number_format($item['qty'] * $item['price'], 2) . '</td>
+        </tr>';
+    }
+    echo '</tbody><tfoot>
+        <tr><td colspan="3">Subtotal</td><td>£' . number_format($order->total_price - $order->delivery_fee - $order->tip_amount, 2) . '</td></tr>
+        <tr><td colspan="3">Delivery</td><td>£' . number_format($order->delivery_fee, 2) . '</td></tr>
+        <tr><td colspan="3">Tip</td><td>£' . number_format($order->tip_amount, 2) . '</td></tr>
+        <tr class="total-row"><td colspan="3">Total</td><td>£' . number_format($order->total_price, 2) . '</td></tr>
+    </tfoot></table>';
+    echo '</div>';
+    echo '<script>window.onload = function() { window.print(); }</script>';
+    exit;
+}
+
+/*--------------------------------------------------------------
+# 1. DELETE LOGIC
+--------------------------------------------------------------*/
+if (isset($_GET['action']) && $_GET['action'] === 'delete') {
+    check_admin_referer('delete_order_' . $afon_order_id);
+    $wpdb->delete($table_name, ['id' => $afon_order_id]);
+    echo '<div class="updated notice is-dismissible"><p>Order deleted successfully.</p></div>';
+    echo '<a href="?page=awesome_food_delivery&tab=orders" class="button">Back to Orders</a>';
+    return;
+}
+
+/*--------------------------------------------------------------
+# 2. DATABASE AUTO-REPAIR (Ensures columns exist)
 --------------------------------------------------------------*/
 $required_columns = [
-    'kitchen_notes'  => "TEXT NOT NULL AFTER `address`",
-    'delivery_notes' => "TEXT NOT NULL AFTER `kitchen_notes`",
-    'tip_amount'     => "DECIMAL(10,2) DEFAULT '0.00' AFTER `delivery_fee`",
-    'delay_message'  => "TEXT NULL AFTER `scheduled_time`"
+    'kitchen_notes'   => "TEXT NOT NULL AFTER `address`",
+    'delivery_notes'  => "TEXT NOT NULL AFTER `kitchen_notes`",
+    'tip_amount'      => "DECIMAL(10,2) DEFAULT '0.00' AFTER `delivery_fee`",
+    'delay_message'   => "TEXT NULL AFTER `scheduled_time`",
+    'postcode'        => "VARCHAR(20) NULL AFTER `address`",
+    'order_type'      => "VARCHAR(50) DEFAULT 'delivery' AFTER `order_status`",
+    'display_id'      => "VARCHAR(50) NULL AFTER `id`",
+    'payment_method'  => "VARCHAR(50) DEFAULT 'Cash' AFTER `total_price`",
+    'payment_status'  => "VARCHAR(50) DEFAULT 'Unpaid' AFTER `payment_method`",
+    'customer_email'  => "VARCHAR(100) NULL AFTER `phone`", 
+    'customer_notes'  => "TEXT NULL AFTER `delivery_notes`"
 ];
 
 foreach ($required_columns as $col => $definition) {
@@ -39,7 +98,7 @@ foreach ($required_columns as $col => $definition) {
 }
 
 /*--------------------------------------------------------------
-# 2. SAVE LOGIC
+# 3. SAVE LOGIC
 --------------------------------------------------------------*/
 if (isset($_POST['afon_update_order'])) {
     check_admin_referer('afon_update_order_action', 'afon_update_order_nonce');
@@ -64,70 +123,106 @@ if (isset($_POST['afon_update_order'])) {
     $new_anchor_ts = current_time('timestamp') + (($mins_input - $prep_time_setting) * 60);
     $new_order_date = date('Y-m-d H:i:s', $new_anchor_ts);
 
+    // FIX: Added isset() checks to prevent Undefined array key warnings
     $update_data = [
-        'kitchen_notes'  => sanitize_textarea_field($_POST['afon_kitchen_notes']),
-        'delivery_notes' => sanitize_textarea_field($_POST['afon_delivery_notes']),
-        'delay_message'  => sanitize_textarea_field($_POST['afon_delay_message']), 
-        'order_status'   => sanitize_text_field($_POST['afon_status']),
-        'items_json'     => json_encode($afon_updated_items),
-        'delivery_fee'   => floatval($_POST['afon_delivery_fee']),
-        'tip_amount'     => floatval($_POST['afon_tip_amount']),
-        'total_price'    => floatval($_POST['afon_total_price']), 
-        'scheduled_time' => $mins_input,
-        'order_date'     => $new_order_date,
+        'kitchen_notes'   => isset($_POST['afon_kitchen_notes']) ? sanitize_textarea_field($_POST['afon_kitchen_notes']) : '',
+        'delivery_notes'  => isset($_POST['afon_delivery_notes']) ? sanitize_textarea_field($_POST['afon_delivery_notes']) : '',
+        'delay_message'   => isset($_POST['afon_delay_message']) ? sanitize_textarea_field($_POST['afon_delay_message']) : '', 
+        'order_status'    => sanitize_text_field($_POST['afon_status']),
+        'order_type'      => sanitize_text_field($_POST['afon_order_type']),
+        'items_json'      => json_encode($afon_updated_items),
+        'delivery_fee'    => floatval($_POST['afon_delivery_fee']),
+        'tip_amount'      => floatval($_POST['afon_tip_amount']),
+        'total_price'     => floatval($_POST['afon_total_price']), 
+        'scheduled_time'  => $mins_input,
+        'order_date'      => $new_order_date,
+        'payment_method'  => sanitize_text_field($_POST['afon_payment_method']),
+        'payment_status'  => sanitize_text_field($_POST['afon_payment_status']),
+        'customer_notes'  => isset($_POST['afon_customer_notes']) ? sanitize_textarea_field($_POST['afon_customer_notes']) : '',
     ];
 
     $wpdb->update($table_name, $update_data, ['id' => $afon_order_id]);
-    echo '<div class="updated notice is-dismissible"><p>Order updated and database synced successfully.</p></div>';
+    echo '<div class="updated notice is-dismissible"><p>Order updated successfully.</p></div>';
 }
 
 /*--------------------------------------------------------------
-# 3. DATA RETRIEVAL
+# 4. DATA RETRIEVAL & MAPPING
 --------------------------------------------------------------*/
 $order = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $afon_order_id));
-if (!$order) { echo "Order not found."; return; }
+if (!$order) { echo '<div class="notice notice-error"><p>Order not found.</p></div>'; return; }
 
 $afon_items = json_decode($order->items_json, true) ?: [];
-$display_id = !empty($order->display_id) ? $order->display_id : $order->id;
+$display_id = !empty($order->display_id) ? $order->display_id : 'REC-' . $order->id;
+$order_type = isset($order->order_type) ? strtolower($order->order_type) : 'delivery';
+$server_now = current_time('timestamp');
+
+// --- Fetch User Meta for Address ---
+$customer_id = $order->customer_id;
+$u_flat      = get_user_meta($customer_id, 'fd_flat_no', true);
+$u_building  = get_user_meta($customer_id, 'fd_building', true);
+$u_door      = get_user_meta($customer_id, 'fd_door_no', true);
+$u_road      = get_user_meta($customer_id, 'fd_road_name', true);
+$u_postcode  = get_user_meta($customer_id, 'fd_user_postcode', true);
+$u_notes     = get_user_meta($customer_id, 'address', true);
+
+// Construct Full Address String for Clipboard
+$full_address_string = trim(implode(', ', array_filter([
+    $u_flat ? 'Flat ' . $u_flat : '',
+    $u_door ? 'Door ' . $u_door : '',
+    $u_building,
+    $u_road,
+    $order->postcode ? $order->postcode : $u_postcode,
+    $u_notes
+])));
 
 // Global settings
 $service_fee_val = (float)get_option('afd_service_charge', '0.00');
-$bag_fee_val     = (float)get_option('afd_bag_charge', '0.00');
-$discount_pct    = (float)get_option('afd_restaurant_discount', '0.00');
+$bag_fee_val = (float)get_option('afd_bag_charge', '0.00');
+$discount_pct = (float)get_option('afd_restaurant_discount', '0.00');
+$prep_mins = intval(get_option('afd_cooking_time', 20));
+
+// Timer Calculation
+$expiry_timestamp = strtotime($order->order_date) + ($prep_mins * 60);
+
+// Base URLs
+$base_url = admin_url('admin.php?page=awesome_food_delivery&tab=orders&order_id=' . $afon_order_id);
+$delete_url = wp_nonce_url($base_url . '&action=delete', 'delete_order_' . $afon_order_id);
+$invoice_url = $base_url . '&action=print&type=customer';
 ?>
 
 <style>
-    :root { 
-        --clr-primary: #ef4444; 
-        --clr-blue: #2563eb; 
-        --clr-border: #e2e8f0; 
-        --clr-dark: #1e293b;
-    }
+    :root { --clr-primary: #ef4444; --clr-blue: #2563eb; --clr-border: #e2e8f0; --clr-dark: #1e293b; --res-red: #d63638; }
     .edit-order-wrap { margin: 20px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     .view-grid { display: grid; grid-template-columns: 1fr 380px; gap: 25px; }
     .view-card { background: #fff; border: 1px solid var(--clr-border); border-radius: 12px; overflow: hidden; margin-bottom: 25px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-    .view-card-header { padding: 15px 20px; background: #f8fafc; border-bottom: 1px solid var(--clr-border); }
+    .view-card-header { padding: 15px 20px; background: #f8fafc; border-bottom: 1px solid var(--clr-border); display: flex; align-items: center; justify-content: space-between; }
     .view-card-header h2 { margin: 0; font-size: 11px; font-weight: 800; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px; }
     .view-card-body { padding: 20px; }
-    
-    .edit-input { width: 100%; border: 1px solid var(--clr-border); border-radius: 8px; padding: 10px; font-size: 14px; transition: border 0.2s; }
-    .edit-input:focus { border-color: var(--clr-blue); outline: none; }
-    
+    .edit-input { width: 100%; border: 1px solid var(--clr-border); border-radius: 8px; padding: 10px; font-size: 14px; }
     label.field-label { font-size: 11px; font-weight: 800; color: #64748b; display: block; margin-bottom: 6px; text-transform: uppercase; }
-    
     .view-table { width: 100%; border-collapse: collapse; }
     .view-table th { text-align: left; padding: 12px; background: #f8fafc; font-size: 11px; border-bottom: 1px solid var(--clr-border); color: #64748b; }
     .view-table td { padding: 12px; border-bottom: 1px solid #f1f5f9; }
-
     .input-with-symbol { position: relative; display: flex; align-items: center; }
     .input-with-symbol span { position: absolute; left: 12px; font-weight: 700; color: #94a3b8; }
     .input-with-symbol input { padding-left: 28px; font-weight: 600; }
-
     .btn-v { text-decoration: none; padding: 8px 15px; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer; border: 1px solid #ccd0d4; background: #fff; }
     .btn-save { background: var(--clr-primary); color: #fff; border: none; width: 100%; height: 50px; font-size: 15px; border-radius: 10px; cursor: pointer; font-weight: 700;}
-    
+    .btn-action { text-decoration: none; padding: 10px 15px; border-radius: 8px; font-weight: 700; font-size: 13px; display: inline-flex; align-items: center; gap: 8px; border: 1px solid #ccd0d4; background: #fff; color: #2c3338; cursor: pointer; }
+    .btn-delete { color: var(--res-red); border-color: #f5c2c7; background: #fff8f8; }
     .grand-total-box { text-align: right; border-top: 2px solid var(--clr-dark); padding-top: 15px; }
     .final-price-input { font-size: 32px; font-weight: 900; color: var(--clr-primary); text-align: right; border: none; background: transparent; width: 180px; pointer-events: none; }
+    .addr-pill { background: #f1f5f9; padding: 15px; border-radius: 10px; border: 1px solid var(--clr-border); margin-top: 10px; font-size: 13px;}
+    .addr-row { display: flex; justify-content: space-between; border-bottom: 1px solid #e2e8f0; padding: 6px 0; }
+    .addr-val { font-weight: 500; text-align: right; }
+    .type-box { display: block; width: 100%; text-align: center; padding: 10px; border-radius: 8px; font-weight: 800; font-size: 14px; margin-top: 10px; }
+    .type-box.delivery { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+    .type-box.pickup { background: #fef9c3; color: #854d0e; border: 1px solid #fef08a; }
+    .view-live-timer { background: #fff8e5; border: 2px solid #ffb900; color: #c45100; padding: 10px 20px; border-radius: 8px; font-family: monospace; font-size: 20px; font-weight: 900; display: inline-flex; align-items: center; gap: 8px; margin-top:10px; }
+    .view-live-timer.timer-late { background: #fcf0f1; color: #d63638; border-color: #d63638; animation: afd-pulse 1s infinite; }
+    @keyframes afd-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+    .readonly-text { font-size: 14px; font-weight: 600; color: #1e293b; padding: 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; word-break: break-all; }
 </style>
 
 <div class="edit-order-wrap">
@@ -135,13 +230,16 @@ $discount_pct    = (float)get_option('afd_restaurant_discount', '0.00');
         <?php wp_nonce_field('afon_update_order_action', 'afon_update_order_nonce'); ?>
         
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:25px;">
-            <div style="background:#fff; padding:12px 20px; border-radius:12px; border:1px solid var(--clr-border);">
-                <span style="font-size:11px; font-weight:700; color:#94a3b8; display:block;">ORDER REFERENCE</span>
+            <div style="background:#fff; padding:12px 20px; border-radius:12px; border:1px solid var(--clr-border); box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
+                <span style="font-size:11px; font-weight:700; color:#94a3b8; display:block; text-transform:uppercase;">Order Reference</span>
                 <span style="font-size:26px; font-weight:900; color:var(--clr-primary);">#<?php echo esc_html($display_id); ?></span>
             </div>
             <div style="display:flex; gap:10px;">
+                <a href="<?php echo $invoice_url; ?>" target="_blank" class="btn-action">
+                    <span class="dashicons dashicons-printer"></span> Print Invoice
+                </a>
                 <a href="?page=awesome_food_delivery&tab=orders" class="btn-v">← Back to Orders</a>
-                <button type="button" id="add-new-item" class="btn-v" style="color:var(--clr-blue); border-color: var(--clr-blue);">+ Add Menu Item</button>
+                <button type="button" id="add-new-item" class="btn-v" style="color:var(--clr-blue); border-color: var(--clr-blue);">+ Add Item</button>
             </div>
         </div>
 
@@ -191,11 +289,11 @@ $discount_pct    = (float)get_option('afd_restaurant_discount', '0.00');
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
                     <div class="view-card" style="border-left:4px solid #ef4444;">
                         <div class="view-card-header"><h2>Kitchen Notes (Internal)</h2></div>
-                        <div class="view-card-body"><textarea name="afon_kitchen_notes" class="edit-input" rows="4" placeholder="Cooking instructions..."><?php echo esc_textarea($order->kitchen_notes); ?></textarea></div>
+                        <div class="view-card-body"><textarea name="afon_kitchen_notes" class="edit-input" rows="4"><?php echo esc_textarea($order->kitchen_notes); ?></textarea></div>
                     </div>
                     <div class="view-card" style="border-left:4px solid var(--clr-blue);">
                         <div class="view-card-header"><h2>Delivery Notes (For Rider)</h2></div>
-                        <div class="view-card-body"><textarea name="afon_delivery_notes" class="edit-input" rows="4" placeholder="Gate codes, directions..."><?php echo esc_textarea($order->delivery_notes); ?></textarea></div>
+                        <div class="view-card-body"><textarea name="afon_delivery_notes" class="edit-input" rows="4"><?php echo esc_textarea($order->delivery_notes); ?></textarea></div>
                     </div>
                 </div>
             </div>
@@ -207,6 +305,15 @@ $discount_pct    = (float)get_option('afd_restaurant_discount', '0.00');
                         <label class="field-label">Minutes until Due</label>
                         <input type="number" name="afon_scheduled_time" value="<?php echo intval($order->scheduled_time); ?>" class="edit-input" style="font-size:28px; font-weight:900; text-align:center; height:60px; color:var(--clr-primary); margin-bottom:15px;">
                         
+                        <?php if (strtolower($order->order_status) === 'cooking') : ?>
+                            <label class="field-label">Live Timer</label>
+                            <div class="view-live-timer" id="view-timer-js" data-expiry="<?php echo $expiry_timestamp; ?>">
+                                <span class="dashicons dashicons-clock"></span> 
+                                <span class="time-string">--:--</span>
+                            </div>
+                            <hr style="border:0; border-top:1px solid #eee; margin:20px 0;">
+                        <?php endif; ?>
+
                         <label class="field-label">Order Status</label>
                         <select name="afon_status" class="edit-input" style="font-weight:700; height:45px; margin-bottom:20px;">
                             <option value="pending" <?php selected($order->order_status, 'pending'); ?>>🔴 PENDING</option>
@@ -214,20 +321,64 @@ $discount_pct    = (float)get_option('afd_restaurant_discount', '0.00');
                             <option value="rider" <?php selected($order->order_status, 'rider'); ?>>🔵 RIDER ASSIGNED</option>
                             <option value="completed" <?php selected($order->order_status, 'completed'); ?>>🟢 COMPLETED</option>
                         </select>
+                        
+                        <label class="field-label">Order Type</label>
+                        <select name="afon_order_type" class="edit-input" style="font-weight:700; height:45px; margin-bottom:20px;">
+                            <option value="delivery" <?php selected($order_type, 'delivery'); ?>>🚚 DELIVERY</option>
+                            <option value="pickup" <?php selected($order_type, 'pickup'); ?>>🏪 PICKUP</option>
+                        </select>
 
                         <button type="submit" name="afon_update_order" class="btn-save">💾 SAVE ALL CHANGES</button>
                     </div>
                 </div>
 
                 <div class="view-card">
+                    <div class="view-card-header"><h2>Payment</h2></div>
+                    <div class="view-card-body">
+                        <div class="info-grid">
+                            <div><label class="field-label">Method</label><select name="afon_payment_method" class="edit-input"><option value="Cash" <?php selected($order->payment_method, 'Cash'); ?>>Cash</option><option value="Card" <?php selected($order->payment_method, 'Card'); ?>>Card</option><option value="Online" <?php selected($order->payment_method, 'Online'); ?>>Online</option></select></div>
+                            <div><label class="field-label">Status</label><select name="afon_payment_status" class="edit-input"><option value="Unpaid" <?php selected($order->payment_status, 'Unpaid'); ?>>Unpaid</option><option value="Paid" <?php selected($order->payment_status, 'Paid'); ?>>Paid</option></select></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="view-card">
                     <div class="view-card-header"><h2>Customer Details</h2></div>
                     <div class="view-card-body">
-                        <p><strong><?php echo esc_html($order->full_name); ?></strong></p>
-                        <p style="font-size:12px; color:#64748b; margin-bottom:5px;"><?php echo esc_html($order->email); ?></p>
-                        <p style="color:var(--clr-blue); font-weight:700;"><?php echo esc_html($order->phone); ?></p>
-                        <hr style="border:0; border-top:1px solid #eee; margin:15px 0;">
-                        <label class="field-label">Delay Message (Customer App)</label>
-                        <textarea name="afon_delay_message" class="edit-input" rows="2" placeholder="Inform customer of delays..."><?php echo esc_textarea($order->delay_message); ?></textarea>
+                        <label class="field-label">Name</label>
+                        <div class="readonly-text" style="margin-bottom:10px;"><?php echo esc_html($order->full_name); ?></div>
+                        
+                        <label class="field-label">Phone</label>
+                        <div class="readonly-text" style="margin-bottom:10px; color:var(--clr-blue);"><?php echo esc_html($order->phone); ?></div>
+                        
+                        <!-- <label class="field-label">Email</label>
+                        <div class="readonly-text" style="margin-bottom:10px;"><?php //echo esc_html($order->customer_email ?: '-'); ?></div> -->
+
+                        <!-- <label class="field-label">Order Notes</label>
+                        <div class="readonly-text" style="margin-bottom:10px;"><?php //echo esc_html($order->customer_notes); ?></div> -->
+                        
+                        <div class="type-box <?php echo $order_type; ?>">
+                            <?php echo strtoupper($order_type); ?>
+                        </div>
+
+                        <?php if ($order_type === 'delivery'): ?>
+                        <div class="addr-pill">
+                            <div class="addr-row"><span>Flat:</span> <span class="addr-val"><?php echo esc_html($u_flat ?: '-'); ?></span></div>
+                            <div class="addr-row"><span>Door:</span> <span class="addr-val"><?php echo esc_html($u_door ?: '-'); ?></span></div>
+                            <div class="addr-row"><span>Building:</span> <span class="addr-val"><?php echo esc_html($u_building ?: '-'); ?></span></div>
+                            <div class="addr-row"><span>Road:</span> <span class="addr-val"><?php echo esc_html($u_road ?: '-'); ?></span></div>
+                            <div class="addr-row"><span>Postcode:</span> <span class="addr-val" style="font-weight:900; color:var(--clr-primary);"><?php echo esc_html($order->postcode ?: $u_postcode); ?></span></div>
+                            <button type="button" onclick="copyToClipboard('<?php echo esc_js($full_address_string); ?>')" class="btn-action" style="width:100%; margin-top:10px; justify-content:center;">📋 Copy Full Address</button>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <div class="view-card" style="border:1px solid #f5c2c7; background:#fff8f8;">
+                    <div class="view-card-body" style="text-align:center;">
+                        <a href="<?php echo $delete_url; ?>" class="btn-action btn-delete" style="width:100%; justify-content:center;" onclick="return confirm('Delete this order permanently?')">
+                            <span class="dashicons dashicons-trash"></span> Delete Order
+                        </a>
                     </div>
                 </div>
             </div>
@@ -237,6 +388,27 @@ $discount_pct    = (float)get_option('afd_restaurant_discount', '0.00');
 
 <script>
 jQuery(document).ready(function($) {
+    // --- Timer Script ---
+    var serverTime = <?php echo $server_now; ?>;
+    var browserTime = Math.floor(Date.now() / 1000);
+    var timeGap = serverTime - browserTime;
+
+    function updateViewClock() {
+        var now = Math.floor(Date.now() / 1000) + timeGap;
+        var timerEl = $('#view-timer-js');
+        if (timerEl.length) {
+            var expiry = parseInt(timerEl.data('expiry'));
+            var diff = expiry - now;
+            if (diff <= 0) { timerEl.addClass('timer-late').find('.time-string').text("LATE"); } 
+            else {
+                var m = Math.floor(diff / 60), s = diff % 60;
+                timerEl.find('.time-string').text((m < 10 ? "0"+m : m) + ":" + (s < 10 ? "0"+s : s));
+            }
+        }
+    }
+    setInterval(updateViewClock, 1000); updateViewClock();
+
+    // --- Financial Calculator ---
     function calculate(triggerSource) {
         let itemsTotal = 0;
         $('.item-row').each(function() {
@@ -248,37 +420,31 @@ jQuery(document).ready(function($) {
         });
 
         let delivery = parseFloat($('input[name="afon_delivery_fee"]').val()) || 0;
-        let service  = parseFloat($('#afon_service_fee').val()) || 0;
-        let bag      = parseFloat($('#afon_bag_fee').val()) || 0;
-        let tip      = parseFloat($('input[name="afon_tip_amount"]').val()) || 0;
-        
-        let dPct     = parseFloat($('#afon_discount_pct').val()) || 0;
-        let dAmt     = parseFloat($('#afon_discount_amt').val()) || 0;
+        let service = parseFloat($('#afon_service_fee').val()) || 0;
+        let bag = parseFloat($('#afon_bag_fee').val()) || 0;
+        let tip = parseFloat($('input[name="afon_tip_amount"]').val()) || 0;
+        let dPct = parseFloat($('#afon_discount_pct').val()) || 0;
+        let dAmt = parseFloat($('#afon_discount_amt').val()) || 0;
 
-        // Sync Percent to Amount unless Amount was manually edited
         if(triggerSource !== 'amt') {
             dAmt = (itemsTotal * dPct) / 100;
             $('#afon_discount_amt').val(dAmt.toFixed(2));
         } else {
-            // Sync Amount to Percent
             if(itemsTotal > 0) {
                 dPct = (dAmt / itemsTotal) * 100;
                 $('#afon_discount_pct').val(dPct.toFixed(2));
             }
         }
-
         let finalTotal = (itemsTotal + delivery + service + bag + tip) - dAmt;
         $('#final-total').val(finalTotal.toFixed(2));
     }
-
-    // Input Listeners
     $(document).on('input', '.price-trigger, .qty-trigger, .charge-trigger, #afon_discount_pct', function() { calculate('pct'); });
     $(document).on('input', '#afon_discount_amt', function() { calculate('amt'); });
 
     // Dynamic Row Logic
     $('#add-new-item').click(function() {
         let row = `<tr class="item-row">
-            <td><input type="text" name="afon_items_name[]" class="edit-input" placeholder="Enter item name"></td>
+            <td><input type="text" name="afon_items_name[]" class="edit-input" placeholder="Item name"></td>
             <td><div class="input-with-symbol"><span>£</span><input type="number" step="0.01" name="afon_items_price[]" value="0.00" class="edit-input price-trigger"></div></td>
             <td><input type="number" name="afon_items_qty[]" value="1" class="edit-input qty-trigger"></td>
             <td style="text-align:right; font-weight:700;">£<span class="row-subtotal">0.00</span></td>
@@ -289,13 +455,18 @@ jQuery(document).ready(function($) {
     });
 
     $(document).on('click', '.remove-item', function() {
-        if($('.item-row').length > 1) { 
-            $(this).closest('tr').remove(); 
-            calculate('pct'); 
-        }
+        if($('.item-row').length > 1) { $(this).closest('tr').remove(); calculate('pct'); }
     });
-
-    // Initial Calculation
     calculate('pct');
 });
+
+function copyToClipboard(text) {
+    var dummy = document.createElement("textarea");
+    document.body.appendChild(dummy);
+    dummy.value = text;
+    dummy.select();
+    document.execCommand("copy");
+    document.body.removeChild(dummy);
+    alert("Address copied to clipboard!");
+}
 </script>

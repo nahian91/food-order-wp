@@ -115,6 +115,7 @@ function fd_settings_tab() {
         update_option('afd_status_message', sanitize_textarea_field($_POST['afd_status_message']));
         update_option('afd_warning_message', sanitize_textarea_field($_POST['afd_warning_message']));
         update_option('afd_delivery_charge', sanitize_text_field($_POST['afd_delivery_charge']));
+        update_option('afd_pickup_charge', sanitize_text_field($_POST['afd_pickup_charge']));
         update_option('afd_service_charge', sanitize_text_field($_POST['afd_service_charge']));
         update_option('afd_bag_charge', sanitize_text_field($_POST['afd_bag_charge']));
         update_option('afd_restaurant_discount', sanitize_text_field($_POST['afd_restaurant_discount'])); 
@@ -138,6 +139,7 @@ function fd_settings_tab() {
     $message          = get_option('afd_status_message', 'Sorry, we are currently closed!');
     $warning_msg      = get_option('afd_warning_message', 'Hurry! We are closing in %min% minutes.');
     $delivery_charge  = get_option('afd_delivery_charge', '0.00');
+    $pickup_charge  = get_option('afd_pickup_charge', '0.00');
     $service_charge   = get_option('afd_service_charge', '0.00');
     $bag_charge       = get_option('afd_bag_charge', '0.00');
     $discount_percent = get_option('afd_restaurant_discount', '0'); 
@@ -224,6 +226,14 @@ function fd_settings_tab() {
                             <div class="currency-input">
                                 <span class="currency-symbol">£</span>
                                 <input type="text" name="afd_delivery_charge" value="<?php echo esc_attr($delivery_charge); ?>" placeholder="0.00">
+                            </div>
+                        </div>
+
+                        <div class="input-field" style="margin-top: 15px;">
+                            <label>Pickup Charge (£)</label>
+                            <div class="currency-input">
+                                <span class="currency-symbol">£</span>
+                                <input type="text" name="afd_pickup_charge" value="<?php echo esc_attr($pickup_charge); ?>" placeholder="0.00">
                             </div>
                         </div>
 

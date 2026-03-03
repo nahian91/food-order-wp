@@ -95,7 +95,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'print' && $_GET['type'] === '
             
             .qty { font-size: 38px; font-weight: 900; width: 60px; line-height: 1; }
             .item-name { font-size: 24px; font-weight: 900; text-transform: uppercase; line-height: 1.1; padding-left: 5px; display: block; }
-            .unit-price { font-size: 20px; font-weight: bold; padding-left: 5px; display: block; margin-top: 4px; color: #444; }
+            .unit-price { font-size: 20px; font-weight: bold; padding-left: 5px; display: block; margin-top: 4px; color: #000; }
             .item-price { font-size: 22px; text-align: right; width: 90px; font-weight: 900; }
             
             .summary-section { margin-top: 20px; border-top: 3px solid #000; padding-top: 12px; }

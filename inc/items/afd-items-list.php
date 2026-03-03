@@ -1,12 +1,17 @@
 <?php
 if (!defined('ABSPATH')) exit;
 
+/**
+ * List View for Food Menu Items
+ * Optimized for DataTable 1.13+ with Visibility Filtering
+ */
 function fd_items_list() {
     $items = get_posts([
         'post_type'   => 'food_item',
         'numberposts' => -1, 
         'orderby'     => 'ID',
         'order'       => 'DESC',
+        'post_status' => array('publish', 'pending', 'draft'), 
     ]);
     ?>
 
@@ -15,69 +20,100 @@ function fd_items_list() {
             --res-primary: #d63638; 
             --res-dark: #1d2327;    
             --res-border: #ccd0d4; 
+            --res-success: #46b450;
+            --res-bg-soft: #fafafa;
         }
 
-        /* Container & Table Style */
-        .afd-dashboard { margin-top: 20px; }
-        #fd-items-table { border: 1px solid var(--res-border); border-radius: 8px; overflow: hidden; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,.05); }
-        #fd-items-table thead th { background: #fafafa; padding: 15px; font-weight: 700; color: #50575e; border-bottom: 2px solid #f0f0f1; text-transform: uppercase; font-size: 11px; }
+        .afd-dashboard { margin-top: 20px; max-width: 1200px; }
+        
+        /* Filter Bar Styling */
+        .afd-filter-bar { 
+            display: flex; 
+            align-items: center; 
+            gap: 20px; 
+            background: #fff; 
+            padding: 15px 20px; 
+            border: 1px solid var(--res-border); 
+            border-radius: 8px; 
+            margin-bottom: 20px; 
+            box-shadow: 0 2px 4px rgba(0,0,0,.02);
+        }
+        .afd-filter-group { display: flex; align-items: center; gap: 10px; }
+        .afd-filter-group label { font-weight: 700; color: var(--res-dark); font-size: 13px; }
+        .afd-filter-select { 
+            border: 1px solid var(--res-border); 
+            border-radius: 6px; 
+            padding: 5px 30px 5px 12px; 
+            min-width: 160px; 
+            cursor: pointer;
+            height: 38px;
+        }
+
+        #fd-items-table { border: 1px solid var(--res-border); border-radius: 8px; overflow: hidden; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,.05); border-spacing: 0; width: 100%; }
+        #fd-items-table thead th { background: var(--res-bg-soft); padding: 15px; font-weight: 700; color: #50575e; border-bottom: 2px solid #f0f0f1; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
         #fd-items-table td { padding: 15px; vertical-align: middle; border-bottom: 1px solid #f0f0f1; }
         
-        /* Badges */
+        /* Toggle Switch */
+        .fd-switch { position: relative; display: inline-block; width: 40px; height: 22px; }
+        .fd-switch input { opacity: 0; width: 0; height: 0; }
+        .fd-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px; }
+        .fd-slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .fd-slider { background-color: var(--res-success); }
+        input:checked + .fd-slider:before { transform: translateX(18px); }
+
         .fd-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; margin: 2px; border: 1px solid transparent; }
         .fd-cat-badge { background: #fff9f9; color: var(--res-primary); border-color: #f5c2c2; }
-        .fd-extra-badge { background: #f0f0f1; color: #3c434a; border-color: #dcdcde; }
         
-        /* SaaS Management Buttons */
-        .fd-btn { padding: 6px 12px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; transition: 0.2s; border: 1px solid #dcdcde; background: #fff; color: #2c3338; white-space: nowrap; }
+        .fd-btn { padding: 8px 14px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; transition: 0.2s; border: 1px solid #dcdcde; background: #fff; color: #2c3338; }
         .fd-btn:hover { border-color: var(--res-primary); color: var(--res-primary); background: #fff9f9; }
         
-        .fd-btn-danger:hover { color: #fff; border-color: var(--res-primary); background: var(--res-primary); }
-        .fd-btn-danger .dashicons { transition: 0.2s; }
-        .fd-btn-danger:hover .dashicons { color: #fff !important; }
-
-        .fd-item-img { border-radius: 8px; border: 1px solid #eee; object-fit: cover; }
-        .fd-no-img { width: 50px; height: 50px; border-radius: 8px; background: #f6f7f7; display: flex; align-items: center; justify-content: center; color: #c3c4c7; border: 1px solid #eee; }
-
-        /* DataTable Search Style */
-        .dataTables_wrapper .dataTables_filter { float: none; text-align: left; }
-        .dataTables_wrapper .dataTables_filter input { border: 1px solid #c3c4c7; border-radius: 4px; padding: 8px 12px; margin-bottom: 20px; width: 300px; }
-        .dataTables_wrapper .dataTables_filter input:focus { border-color: var(--res-primary); box-shadow: 0 0 0 1px var(--res-primary); outline: none; }
-        .dataTables_wrapper .dataTables_paginate .paginate_button.current { background: var(--res-primary) !important; color: #fff !important; border: 1px solid var(--res-primary) !important; border-radius: 4px; }
+        /* DataTables Customizations */
+        .dataTables_wrapper .dataTables_filter { margin: 0; }
+        .dataTables_wrapper .dataTables_filter input { border: 1px solid var(--res-border); border-radius: 6px; padding: 8px 12px; width: 280px; margin: 0; outline: none; }
     </style>
 
     <div class="wrap afd-dashboard">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
-            <h1 style="margin:0; font-weight: 700;"><?php esc_html_e('Food Menu Items', 'text-domain'); ?></h1>
-            <a href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=items&sub=add'); ?>" class="button button-primary" style="background:var(--res-primary); border-color:var(--res-primary); font-weight:600; padding: 0 20px;">+ Add New Menu Item</a>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+            <div>
+                <h1 style="margin:0; font-weight: 800; font-size: 24px; color: var(--res-dark);">Menu Dashboard</h1>
+                <p style="color: #646970; margin: 5px 0 0;"><?php echo count($items); ?> items in catalog.</p>
+            </div>
+            <a href="?page=awesome_food_delivery&tab=items&sub=add" class="button button-primary" style="background:var(--res-primary); border:none; font-weight:700; padding: 8px 25px; height: auto; border-radius: 6px;">+ Add Menu Item</a>
         </div>
 
-        <table id="fd-items-table" class="widefat">
+        <div class="afd-filter-bar">
+            <div class="afd-filter-group">
+                <label for="visibility-filter">Visibility Status:</label>
+                <select id="visibility-filter" class="afd-filter-select">
+                    <option value="">All Statuses</option>
+                    <option value="Live">Live (Published)</option>
+                    <option value="Hidden">Hidden (Pending/Draft)</option>
+                </select>
+            </div>
+            <div style="margin-left: auto;" id="custom-search-container">
+                </div>
+        </div>
+
+        <table id="fd-items-table" class="display nowrap">
             <thead>
                 <tr>
-                    <th width="75">Photo</th>
-                    <th>Item Details</th>
-                    <th>Category</th>
-                    <th>Available Extras</th>
+                    <th width="80">Preview</th>
+                    <th>Item Information</th>
+                    <th>Categories</th>
+                    <th width="100">Visibility</th>
                     <th width="100">Price</th>
-                    <th width="280" style="text-align: right;">Management</th>
-                </tr>
+                    <th width="240" style="text-align: right;">Actions</th>
+                    <th style="display:none;">FilterKey</th> </tr>
             </thead>
             <tbody>
                 <?php if($items): 
-                    $extras_all = get_option('fd_extras', []);
                     foreach($items as $item):
-                        $price      = get_post_meta($item->ID, 'price', true);
-                        $cats       = wp_get_post_terms($item->ID, 'food_category');
-                        $extras_ids = get_post_meta($item->ID, 'fd_item_extras', true);
-                        
-                        // Internal Admin URLs
-                        $base_url   = admin_url('admin.php?page=awesome_food_delivery&tab=items');
-                        $view_url   = $base_url . '&sub=view&item=' . $item->ID;
-                        $edit_url   = $base_url . '&sub=edit&item=' . $item->ID;
-                        $del_url    = wp_nonce_url(admin_url('admin-post.php?action=fd_delete_item&item='.$item->ID), 'fd_delete_item_'.$item->ID);
+                        $price    = get_post_meta($item->ID, 'price', true);
+                        $cats     = wp_get_post_terms($item->ID, 'food_category');
+                        $is_active = ($item->post_status === 'publish');
+                        $status_label = $is_active ? 'Live' : 'Hidden';
                 ?>
-                    <tr>
+                    <tr id="item-row-<?php echo $item->ID; ?>">
                         <td>
                             <?php if (has_post_thumbnail($item->ID)): ?>
                                 <?php echo get_the_post_thumbnail($item->ID, [50, 50], ['class' => 'fd-item-img']); ?>
@@ -86,23 +122,19 @@ function fd_items_list() {
                             <?php endif; ?>
                         </td>
                         <td>
-                            <strong style="font-size:15px; color: var(--res-dark);"><?php echo esc_html($item->post_title); ?></strong><br>
-                            <code style="background:none; padding:0; color: #a7aaad; font-size: 11px;">#<?php echo $item->ID; ?></code>
+                            <strong style="font-size:15px; color: var(--res-dark); display: block;"><?php echo esc_html($item->post_title); ?></strong>
+                            <code style="background: #f0f0f1; color: #50575e; font-size: 10px; border-radius: 3px; padding: 1px 4px;">#<?php echo $item->ID; ?></code>
                         </td>
                         <td>
                             <?php if($cats): foreach($cats as $c): ?>
                                 <span class="fd-badge fd-cat-badge"><?php echo esc_html($c->name); ?></span>
-                            <?php endforeach; else: echo '<span style="color:#a7aaad;">—</span>'; endif; ?>
+                            <?php endforeach; else: echo '<span style="color:#a7aaad;">Uncategorized</span>'; endif; ?>
                         </td>
                         <td>
-                            <?php 
-                            if($extras_ids && is_array($extras_ids)): 
-                                foreach($extras_ids as $id): 
-                                    if(isset($extras_all[$id])): ?>
-                                        <span class="fd-badge fd-extra-badge"><?php echo esc_html($extras_all[$id]['name']); ?></span>
-                            <?php   endif; 
-                                endforeach; 
-                            else: echo '<span style="color:#a7aaad; font-size: 12px;">No extras</span>'; endif; ?>
+                            <label class="fd-switch">
+                                <input type="checkbox" class="fd-status-toggle" data-id="<?php echo $item->ID; ?>" <?php checked($is_active); ?>>
+                                <span class="fd-slider"></span>
+                            </label>
                         </td>
                         <td>
                             <strong style="font-size:16px; color: var(--res-primary);">
@@ -110,38 +142,67 @@ function fd_items_list() {
                             </strong>
                         </td>
                         <td style="text-align: right;">
-                            <a class="fd-btn" href="<?php echo $view_url; ?>" title="View Details">
-                                <span class="dashicons dashicons-visibility" style="font-size:16px; margin-top:3px;"></span> View
+                            <a class="fd-btn" href="?page=awesome_food_delivery&tab=items&sub=edit&item=<?php echo $item->ID; ?>">
+                                <span class="dashicons dashicons-edit"></span> Edit
                             </a>
-                            <a class="fd-btn" href="<?php echo $edit_url; ?>">
-                                <span class="dashicons dashicons-edit" style="font-size:16px; margin-top:3px;"></span> Edit
-                            </a>
-                            <a class="fd-btn fd-btn-danger" onclick="return confirm('Are you sure you want to delete this menu item?')" href="<?php echo $del_url; ?>">
-                                <span class="dashicons dashicons-trash" style="font-size:16px; margin-top:3px; color: var(--res-primary);"></span> Delete
+                            <a class="fd-btn" style="color:red;" onclick="return confirm('Delete item?')" href="<?php echo wp_nonce_url(admin_url('admin-post.php?action=fd_delete_item&item='.$item->ID), 'fd_delete_item_'.$item->ID); ?>">
+                                <span class="dashicons dashicons-trash"></span>
                             </a>
                         </td>
+                        <td style="display:none;"><?php echo $status_label; ?></td>
                     </tr>
-                <?php endforeach; else: ?>
-                    <tr><td colspan="6" style="padding:40px; text-align:center;">No food items found. Start by adding one!</td></tr>
-                <?php endif; ?>
+                <?php endforeach; endif; ?>
             </tbody>
         </table>
     </div>
 
     <script>
     jQuery(document).ready(function($){
-        $('#fd-items-table').DataTable({
-            "pageLength": 20,
-            "language": {
-                "search": "",
-                "searchPlaceholder": "Search menu items (Name, ID)...",
-                "paginate": { "next": "→", "previous": "←" }
-            },
-            "dom": '<"top"f>rt<"bottom"ip><"clear">',
-            "columnDefs": [
-                { "orderable": false, "targets": [0, 5] }
-            ]
-        });
+        if ($.fn.DataTable) {
+            // 1. Initialize Table
+            var table = $('#fd-items-table').DataTable({
+                "pageLength": 15,
+                "order": [[1, "asc"]],
+                "dom": '<"top"f>rt<"bottom"ip><"clear">',
+                "columnDefs": [ { "orderable": false, "targets": [0, 3, 5] } ],
+                "language": { "search": "", "searchPlaceholder": "Search menu..." }
+            });
+
+            // 2. Move Search Box to our Filter Bar
+            $('.dataTables_filter').appendTo('#custom-search-container');
+
+            // 3. Visibility Filter Logic
+            $('#visibility-filter').on('change', function(){
+                var val = $(this).val();
+                table.column(6).search(val).draw();
+            });
+
+            // 4. AJAX Toggle Logic
+            $('.fd-status-toggle').on('change', function(){
+                var $this = $(this);
+                var $row = $this.closest('tr');
+                var itemId = $this.data('id');
+                var isActive = $this.is(':checked');
+                
+                $this.closest('.fd-switch').css('opacity', '0.5');
+
+                $.post(ajaxurl, {
+                    action: 'fd_toggle_item_status',
+                    item_id: itemId,
+                    status: isActive ? 'publish' : 'pending',
+                    nonce: '<?php echo wp_create_nonce("fd_status_nonce"); ?>'
+                }, function(res) {
+                    $this.closest('.fd-switch').css('opacity', '1');
+                    if(res.success) {
+                        // Update hidden column so the filter stays accurate
+                        table.cell($row, 6).data(isActive ? 'Live' : 'Hidden').draw(false);
+                    } else {
+                        alert('Error updating status.');
+                        $this.prop('checked', !isActive);
+                    }
+                });
+            });
+        }
     });
     </script>
 <?php

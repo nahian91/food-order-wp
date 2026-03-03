@@ -1138,7 +1138,8 @@
 	}
 
 	ul.meal-items li .thumbnail {
-		display: none;
+		display: block;
+		margin-bottom: 30px;
 	}
 
 	ul.meal-items li {

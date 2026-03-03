@@ -1,7 +1,7 @@
 <?php
 /**
  * AWESOME FOOD DELIVERY - ULTIMATE MASTER DASHBOARD
- * Features: Automatic Kitchen Printing on "Start Cooking", Pre-order detection, Sound Alarm.
+ * Features: Daily Filter, Automatic Kitchen Printing on "Start Cooking", Pre-order detection, Sound Alarm.
  */
 
 if (!defined('ABSPATH')) exit;
@@ -11,7 +11,7 @@ $table_name = $wpdb->prefix . 'afd_food_orders';
 
 // --- 1. ACTION HANDLERS ---
 
-// UPDATE STATUS
+// UPDATE STATUS & TRIGGER AUTO-PRINT
 if (isset($_GET['action']) && $_GET['action'] === 'update_status' && isset($_GET['order_id']) && isset($_GET['new_status'])) {
     $order_id = intval($_GET['order_id']);
     $new_status = sanitize_text_field($_GET['new_status']);
@@ -72,6 +72,24 @@ if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['order
     }
 }
 
+// --- 2. KITCHEN PRINTING HANDLER (AJAX/IFRAME) ---
+if (isset($_GET['action']) && $_GET['action'] === 'print' && isset($_GET['order_id'])) {
+    $order = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", intval($_GET['order_id'])));
+    if ($order) {
+        echo '<style>body{font-family:monospace; padding:20px;} .print-box{width:300px; margin:auto;}</style>';
+        echo '<div class="print-box">';
+        echo '<h2>KITCHEN RECEIPT</h2>';
+        echo '<p><strong>Order:</strong> #'.esc_html($order->display_id).'</p>';
+        echo '<p><strong>Time:</strong> '.esc_html($order->order_date).'</p>';
+        echo '<p><strong>Status:</strong> '.strtoupper(esc_html($order->order_status)).'</p>';
+        echo '<hr><p>'.nl2br(esc_html($order->notes)).'</p>';
+        echo '<hr><p>'.nl2br(esc_html($order->address)).'</p>';
+        echo '</div>';
+        echo '<script>window.print();</script>';
+        exit;
+    }
+}
+
 // --- 3. VIEW / EDIT PAGES ---
 if (isset($_GET['action']) && ($_GET['action'] === 'view' || $_GET['action'] === 'edit') && isset($_GET['order_id'])) {
     $order = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", intval($_GET['order_id'])));
@@ -107,9 +125,17 @@ if (isset($_GET['action']) && ($_GET['action'] === 'view' || $_GET['action'] ===
 
 // --- 4. MAIN DASHBOARD ---
 $prep_time = intval(get_option('afd_cooking_time', 20));
-$afon_orders = $wpdb->get_results("SELECT * FROM $table_name ORDER BY id DESC LIMIT 500");
-$server_now = current_time('timestamp'); 
 
+// SQL to get only TODAY'S orders
+$today_start = date('Y-m-d 00:00:00');
+$today_end = date('Y-m-d 23:59:59');
+$afon_orders = $wpdb->get_results($wpdb->prepare(
+    "SELECT * FROM $table_name WHERE order_date BETWEEN %s AND %s ORDER BY id DESC LIMIT 500",
+    $today_start,
+    $today_end
+));
+
+$server_now = current_time('timestamp'); 
 $alarm_trigger_count = 0;
 ?>
 
@@ -161,7 +187,7 @@ $alarm_trigger_count = 0;
     </div>
 
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-        <h1 style="font-weight: 900; font-size: 24px;">Order Live-Feed Dashboard</h1>
+        <h1 style="font-weight: 900; font-size: 24px;">Order Live-Feed Dashboard (Today: <?php echo date('d M'); ?>)</h1>
         <div style="background: #fff; padding: 5px 15px; border-radius: 20px; border: 1px solid #ccc; font-size: 12px; font-weight: bold;">
             Auto-Refresh: <span id="timer-count" style="color:red;">30</span>s
         </div>
@@ -223,19 +249,16 @@ $alarm_trigger_count = 0;
                 <td align="right">
                     <div style="display: flex; gap: 5px; justify-content: flex-end; flex-wrap: wrap;">
                         <?php if ($st === 'pending' || $st === 'preorder') : ?>
-                            <a class="fd-action-btn" style="color:#d63638; border-color:#d63638;" href="<?php echo $url . '&action=update_status&new_status=cooking'; ?>"><span class="dashicons dashicons-carrot"></span> START COOK</a>
+                            <a class="fd-action-btn" style="color:#d63638; border-color:#d63638;" href="<?php echo $url . '&action=update_status&new_status=cooking'; ?>"><span class="dashicons dashicons-carrot"></span> Accept Order</a>
                         <?php elseif ($st === 'cooking') : ?>
                             <a class="fd-action-btn" style="color:#3b82f6; border-color:#3b82f6;" href="<?php echo $url . '&action=update_status&new_status=rider'; ?>"><span class="dashicons dashicons-external"></span> READY</a>
                         <?php elseif ($st === 'rider') : ?>
                             <a class="fd-action-btn" style="color:#46b450; border-color:#46b450;" href="<?php echo $url . '&action=update_status&new_status=completed'; ?>"><span class="dashicons dashicons-yes-alt"></span> MARK COMPLETE</a>
                         <?php endif; ?>
                         
-                        <a class="fd-action-btn" href="<?php echo $url . '&action=view'; ?>"><span class="dashicons dashicons-visibility"></span> VIEW</a>
                         <a class="fd-action-btn" href="<?php echo $url . '&action=edit'; ?>"><span class="dashicons dashicons-edit"></span> EDIT</a>
                         
-                        <a class="fd-action-btn" href="<?php echo $url . '&action=print&type=kitchen'; ?>" target="_blank"><span class="dashicons dashicons-media-text"></span> KITCHEN</a>
-                        <a class="fd-action-btn" href="<?php echo $url . '&action=print&type=customer'; ?>" target="_blank"><span class="dashicons dashicons-printer"></span> RECEIPT</a>
-                        <a class="fd-action-btn" style="color:#d63638;" href="<?php echo wp_nonce_url($url . '&action=delete', 'delete_order_'.$order->id); ?>" onclick="return confirm('Delete Order?')"><span class="dashicons dashicons-trash"></span> DEL</a>
+                        <a class="fd-action-btn" href="<?php echo $url . '&action=print&type=kitchen'; ?>" target="_blank"><span class="dashicons dashicons-media-text"></span> Receipt</a>
                     </div>
                 </td>
             </tr>
@@ -246,39 +269,44 @@ $alarm_trigger_count = 0;
 
 <script>
 jQuery(document).ready(function($){
-    // Initialize DataTable
+    // --- Auto-Print Trigger Logic ---
+    const urlParams = new URLSearchParams(window.location.search);
+    const autoPrintID = urlParams.get('autoprint');
+
+    if (autoPrintID) {
+        // Construct the print URL
+        const printUrl = "admin.php?page=awesome_food_delivery&tab=orders&order_id=" + autoPrintID + "&action=print";
+        
+        // Load in hidden iframe
+        $('#afd-print-frame').attr('src', printUrl);
+
+        $('#afd-print-frame').on('load', function() {
+            // Trigger print dialog in the iframe context
+            this.contentWindow.focus();
+            this.contentWindow.print();
+            
+            // Clean URL after printing to prevent re-print on refresh
+            const cleanUrl = window.location.href.split('&autoprint=')[0];
+            window.history.replaceState({}, document.title, cleanUrl);
+        });
+    }
+
+    // --- Filter Buttons ---
+    $('.filter-btn').on('click', function(){
+        $('.filter-btn').removeClass('active');
+        $(this).addClass('active');
+        // This requires DataTable initialization, added below
+        table.column(2).search($(this).data('status')).draw();
+    });
+
+    // --- DataTables Init ---
     var table = $('#afon-orders-table').DataTable({
         "order": [[0, "desc"]],
         "pageLength": 50,
         "language": { "search": "Quick Search:" }
     });
 
-    // Auto-Print Trigger Logic
-    const urlParams = new URLSearchParams(window.location.search);
-    const autoPrintID = urlParams.get('autoprint');
-
-    if (autoPrintID) {
-        const printUrl = "admin.php?page=awesome_food_delivery&tab=orders&order_id=" + autoPrintID + "&action=print&type=kitchen";
-        $('#afd-print-frame').attr('src', printUrl);
-
-        $('#afd-print-frame').on('load', function() {
-            this.contentWindow.focus();
-            this.contentWindow.print();
-            
-            // Clean URL after printing
-            const cleanUrl = window.location.href.split('&autoprint=')[0];
-            window.history.replaceState({}, document.title, cleanUrl);
-        });
-    }
-
-    // Filter Buttons
-    $('.filter-btn').on('click', function(){
-        $('.filter-btn').removeClass('active');
-        $(this).addClass('active');
-        table.column(2).search($(this).data('status')).draw();
-    });
-
-    // Clock/Timer Logic
+    // --- Clock/Timer Logic ---
     var sT = <?php echo $server_now; ?>, bT = Math.floor(Date.now() / 1000), gap = sT - bT;
     function updateClocks() {
         var now = Math.floor(Date.now() / 1000) + gap;
@@ -293,7 +321,7 @@ jQuery(document).ready(function($){
     }
     setInterval(updateClocks, 1000); updateClocks();
 
-    // Sound Alarm Logic
+    // --- Sound Alarm Logic ---
     const audio = document.getElementById('afdOrderAlarm');
     const unlockBtn = document.getElementById('afd-alarm-unlock');
     const newOrders = <?php echo (int)$alarm_trigger_count; ?>;
@@ -311,7 +339,7 @@ jQuery(document).ready(function($){
         if (newOrders > 0) { audio.play(); }
     });
 
-    // Auto Refresh countdown
+    // --- Auto Refresh countdown ---
     var refresh = 30;
     setInterval(function(){
         refresh--; $('#timer-count').text(refresh);
