@@ -135,7 +135,7 @@ $alarm_trigger_count = 0;
     .afd-dashboard { margin-top: 20px; font-family: sans-serif; }
     #afd-print-frame { display: none; width: 0; height: 0; border: none; }
     #afd-alarm-unlock { background: #fffbeb; border: 1px solid #fef3c7; padding: 15px; margin-bottom: 20px; border-radius: 8px; text-align: center; cursor: pointer; font-weight: bold; color: #92400e; display: flex; align-items: center; justify-content: center; gap: 10px; }
-    #afon-orders-table { width: 100%; background: #fff; border: 1px solid #ccd0d4; border-radius: 8px; border-collapse: separate; border-spacing: 0; }
+    #afon-orders-table { width: 100% !important; background: #fff; border: 1px solid #ccd0d4; border-radius: 8px; border-collapse: separate; border-spacing: 0; }
     #afon-orders-table th { background: #f9f9f9; padding: 15px; border-bottom: 2px solid #ccd0d4; text-align: left; font-size: 11px; text-transform: uppercase; color: #666; }
     #afon-orders-table td { padding: 12px 15px; border-bottom: 1px solid #f0f0f1; vertical-align: middle; }
     .st-badge { padding: 4px 10px; border-radius: 20px; font-size: 10px; font-weight: 800; color: #fff; text-transform: uppercase; }
