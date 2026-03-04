@@ -1,7 +1,8 @@
 <?php
 /**
  * AWESOME FOOD DELIVERY - ULTIMATE MASTER DASHBOARD
- * Features: Daily Filter, Automatic Kitchen Printing on "Start Cooking", Pre-order detection, Sound Alarm.
+ * Features: Daily Filter, Automatic Kitchen Printing, Pre-order detection, Sound Alarm.
+ * Updated: External Receipt Loading (afd-orders-print-kitchen.php)
  */
 
 if (!defined('ABSPATH')) exit;
@@ -23,7 +24,6 @@ if (isset($_GET['action']) && $_GET['action'] === 'update_status' && isset($_GET
     
     $wpdb->update($table_name, $update_data, ['id' => $order_id]);
     
-    // Redirect with autoprint flag if status is cooking
     $redirect_url = 'admin.php?page=awesome_food_delivery&tab=orders';
     if ($new_status === 'cooking') {
         $redirect_url .= '&autoprint=' . $order_id;
@@ -72,21 +72,20 @@ if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['order
     }
 }
 
-// --- 2. KITCHEN PRINTING HANDLER (AJAX/IFRAME) ---
+// --- 2. KITCHEN PRINTING HANDLER (FIXED PATH) ---
 if (isset($_GET['action']) && $_GET['action'] === 'print' && isset($_GET['order_id'])) {
-    $order = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", intval($_GET['order_id'])));
-    if ($order) {
-        echo '<style>body{font-family:monospace; padding:20px;} .print-box{width:300px; margin:auto;}</style>';
-        echo '<div class="print-box">';
-        echo '<h2>KITCHEN RECEIPT</h2>';
-        echo '<p><strong>Order:</strong> #'.esc_html($order->display_id).'</p>';
-        echo '<p><strong>Time:</strong> '.esc_html($order->order_date).'</p>';
-        echo '<p><strong>Status:</strong> '.strtoupper(esc_html($order->order_status)).'</p>';
-        echo '<hr><p>'.nl2br(esc_html($order->notes)).'</p>';
-        echo '<hr><p>'.nl2br(esc_html($order->address)).'</p>';
-        echo '</div>';
-        echo '<script>window.print();</script>';
+    $order_id = intval($_GET['order_id']);
+    
+    // This looks for the file in the same folder as this dashboard file
+    $print_file = plugin_dir_path(__FILE__) . 'afd-orders-print-kitchen.php';
+    
+    if (file_exists($print_file)) {
+        // We include it so it has access to the $order_id variable
+        include($print_file);
         exit;
+    } else {
+        // If it still fails, this error will tell us EXACTLY where it is looking
+        wp_die("Error: File not found at " . esc_html($print_file));
     }
 }
 
@@ -125,45 +124,26 @@ if (isset($_GET['action']) && ($_GET['action'] === 'view' || $_GET['action'] ===
 
 // --- 4. MAIN DASHBOARD ---
 $prep_time = intval(get_option('afd_cooking_time', 20));
-
-// SQL to get only TODAY'S orders
-$today_start = date('Y-m-d 00:00:00');
-$today_end = date('Y-m-d 23:59:59');
-$afon_orders = $wpdb->get_results($wpdb->prepare(
-    "SELECT * FROM $table_name WHERE order_date BETWEEN %s AND %s ORDER BY id DESC LIMIT 500",
-    $today_start,
-    $today_end
-));
-
+$afon_orders = $wpdb->get_results("SELECT * FROM $table_name ORDER BY id DESC LIMIT 1000");
 $server_now = current_time('timestamp'); 
+$today_date = date('Y-m-d');
 $alarm_trigger_count = 0;
 ?>
 
 <style>
     :root { --clr-preorder: #8b5cf6; --clr-pending: #d63638; --clr-cooking: #f59e0b; --clr-rider: #3b82f6; --clr-completed: #46b450; }
     .afd-dashboard { margin-top: 20px; font-family: sans-serif; }
-    
-    /* Hidden Iframe for silent printing */
     #afd-print-frame { display: none; width: 0; height: 0; border: none; }
-
-    #afd-alarm-unlock { 
-        background: #fffbeb; border: 1px solid #fef3c7; padding: 15px; 
-        margin-bottom: 20px; border-radius: 8px; text-align: center; 
-        cursor: pointer; font-weight: bold; color: #92400e; display: flex; 
-        align-items: center; justify-content: center; gap: 10px;
-    }
-
+    #afd-alarm-unlock { background: #fffbeb; border: 1px solid #fef3c7; padding: 15px; margin-bottom: 20px; border-radius: 8px; text-align: center; cursor: pointer; font-weight: bold; color: #92400e; display: flex; align-items: center; justify-content: center; gap: 10px; }
     #afon-orders-table { width: 100%; background: #fff; border: 1px solid #ccd0d4; border-radius: 8px; border-collapse: separate; border-spacing: 0; }
     #afon-orders-table th { background: #f9f9f9; padding: 15px; border-bottom: 2px solid #ccd0d4; text-align: left; font-size: 11px; text-transform: uppercase; color: #666; }
     #afon-orders-table td { padding: 12px 15px; border-bottom: 1px solid #f0f0f1; vertical-align: middle; }
     .st-badge { padding: 4px 10px; border-radius: 20px; font-size: 10px; font-weight: 800; color: #fff; text-transform: uppercase; }
-    
     .status-preorder { background: var(--clr-preorder); }
     .status-pending { background: var(--clr-pending); animation: afd-pulse 2s infinite; }
     .status-cooking { background: var(--clr-cooking); }
     .status-rider { background: var(--clr-rider); }
     .status-completed { background: var(--clr-completed); }
-
     .timer-box { font-family: monospace; font-weight: 700; font-size: 14px; color: #c45100; background: #fff8e5; padding: 4px 10px; border: 1px solid #ffb900; border-radius: 4px; display: inline-flex; align-items: center; gap: 5px; }
     .timer-late { background: #fcf0f1; color: #d63638; border-color: #d63638; animation: afd-pulse 1s infinite; }
     .afd-filter-bar { display: flex; gap: 10px; margin-bottom: 20px; align-items: center; background:#fff; padding:15px; border:1px solid #ccc; border-radius:8px; }
@@ -176,31 +156,29 @@ $alarm_trigger_count = 0;
 
 <div class="wrap afd-dashboard">
     <iframe id="afd-print-frame"></iframe>
-
     <audio id="afdOrderAlarm" loop preload="auto">
         <source src="https://assets.mixkit.co/active_storage/sfx/2041/2041-preview.mp3" type="audio/mpeg">
     </audio>
 
     <div id="afd-alarm-unlock">
-        <span class="dashicons dashicons-megaphone"></span> 
-        CLICK HERE TO ENABLE SOUND NOTIFICATIONS
+        <span class="dashicons dashicons-megaphone"></span> CLICK HERE TO ENABLE SOUND NOTIFICATIONS
     </div>
 
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-        <h1 style="font-weight: 900; font-size: 24px;">Order Live-Feed Dashboard (Today: <?php echo date('d M'); ?>)</h1>
-        <div style="background: #fff; padding: 5px 15px; border-radius: 20px; border: 1px solid #ccc; font-size: 12px; font-weight: bold;">
+        <h1 style="font-weight: 900; font-size: 24px;">Order Live-Feed Dashboard</h1>
+        <div id="refresh-ui" style="background: #fff; padding: 5px 15px; border-radius: 20px; border: 1px solid #ccc; font-size: 12px; font-weight: bold;">
             Auto-Refresh: <span id="timer-count" style="color:red;">30</span>s
         </div>
     </div>
 
     <div class="afd-filter-bar">
         <strong>Status Filters:</strong>
-        <button class="filter-btn active" data-status="">All</button>
+        <button class="filter-btn active" data-status="today">Today</button>
         <button class="filter-btn" data-status="preorder">Pre-orders</button>
         <button class="filter-btn" data-status="pending">Pending</button>
         <button class="filter-btn" data-status="cooking">Kitchen</button>
         <button class="filter-btn" data-status="rider">Rider</button>
-        <button class="filter-btn" data-status="completed">Done</button>
+        <button class="filter-btn" data-status="all">All History</button>
     </div>
 
     <table id="afon-orders-table">
@@ -210,6 +188,7 @@ $alarm_trigger_count = 0;
                 <th>Customer Name</th>
                 <th width="100">Status</th>
                 <th width="140">Kitchen Timer</th>
+                <th style="display:none;">DateHidden</th>
                 <th style="text-align: right;">Actions</th>
             </tr>
         </thead>
@@ -217,22 +196,17 @@ $alarm_trigger_count = 0;
             <?php foreach ($afon_orders as $order) : 
                 $raw_st = strtolower(trim($order->order_status));
                 $sched = strtolower(trim($order->scheduled_time));
+                $order_day = date('Y-m-d', strtotime($order->order_date));
                 
                 if (empty($raw_st) || $raw_st === 'pending' || $raw_st === 'preorder') {
-                    if ($sched !== 'asap' && !empty($sched)) {
-                        $st = 'preorder';
-                    } else {
-                        $st = 'pending';
-                    }
-                    $alarm_trigger_count++;
-                } else {
-                    $st = $raw_st;
-                }
+                    $st = ($sched !== 'asap' && !empty($sched)) ? 'preorder' : 'pending';
+                    if ($order_day === $today_date) $alarm_trigger_count++;
+                } else { $st = $raw_st; }
                 
                 $expiry = strtotime($order->order_date) + ($prep_time * 60);
                 $url = admin_url('admin.php?page=awesome_food_delivery&tab=orders&order_id=' . $order->id);
             ?>
-            <tr>
+            <tr data-order-day="<?php echo $order_day; ?>">
                 <td><strong>#<?php echo $order->display_id; ?></strong></td>
                 <td>
                     <strong style="font-size:15px;"><?php echo esc_html($order->full_name); ?></strong><br>
@@ -246,6 +220,7 @@ $alarm_trigger_count = 0;
                         </div>
                     <?php else: ?><span style="color:#bbb; padding-left:10px;">--:--</span><?php endif; ?>
                 </td>
+                <td style="display:none;"><?php echo $order_day; ?></td>
                 <td align="right">
                     <div style="display: flex; gap: 5px; justify-content: flex-end; flex-wrap: wrap;">
                         <?php if ($st === 'pending' || $st === 'preorder') : ?>
@@ -255,10 +230,8 @@ $alarm_trigger_count = 0;
                         <?php elseif ($st === 'rider') : ?>
                             <a class="fd-action-btn" style="color:#46b450; border-color:#46b450;" href="<?php echo $url . '&action=update_status&new_status=completed'; ?>"><span class="dashicons dashicons-yes-alt"></span> MARK COMPLETE</a>
                         <?php endif; ?>
-                        
                         <a class="fd-action-btn" href="<?php echo $url . '&action=edit'; ?>"><span class="dashicons dashicons-edit"></span> EDIT</a>
-                        
-                        <a class="fd-action-btn" href="<?php echo $url . '&action=print&type=kitchen'; ?>" target="_blank"><span class="dashicons dashicons-media-text"></span> Receipt</a>
+                        <a class="fd-action-btn" href="<?php echo $url . '&action=print'; ?>" target="_blank"><span class="dashicons dashicons-media-text"></span> Receipt</a>
                     </div>
                 </td>
             </tr>
@@ -269,46 +242,40 @@ $alarm_trigger_count = 0;
 
 <script>
 jQuery(document).ready(function($){
-    // --- Auto-Print Trigger Logic ---
-    const urlParams = new URLSearchParams(window.location.search);
-    const autoPrintID = urlParams.get('autoprint');
+    var todayStr = '<?php echo $today_date; ?>';
+    
+    // Custom Filter Logic for Today/Status/All
+    $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
+        var activeFilter = $('.filter-btn.active').data('status');
+        var rowStatus = $(settings.aoData[dataIndex].nTr).find('.st-badge').text().trim().toLowerCase();
+        var rowDate = $(settings.aoData[dataIndex].nTr).data('order-day');
+        if (activeFilter === 'today') return rowDate === todayStr;
+        if (activeFilter === 'all') return true;
+        return rowStatus === activeFilter;
+    });
 
-    if (autoPrintID) {
-        // Construct the print URL
-        const printUrl = "admin.php?page=awesome_food_delivery&tab=orders&order_id=" + autoPrintID + "&action=print";
-        
-        // Load in hidden iframe
-        $('#afd-print-frame').attr('src', printUrl);
+    var table = $('#afon-orders-table').DataTable({ "order": [[0, "desc"]], "pageLength": 50 });
+    table.draw();
 
-        $('#afd-print-frame').on('load', function() {
-            // Trigger print dialog in the iframe context
-            this.contentWindow.focus();
-            this.contentWindow.print();
-            
-            // Clean URL after printing to prevent re-print on refresh
-            const cleanUrl = window.location.href.split('&autoprint=')[0];
-            window.history.replaceState({}, document.title, cleanUrl);
-        });
-    }
-
-    // --- Filter Buttons ---
     $('.filter-btn').on('click', function(){
         $('.filter-btn').removeClass('active');
         $(this).addClass('active');
-        // This requires DataTable initialization, added below
-        table.column(2).search($(this).data('status')).draw();
+        if($(this).data('status') === 'today') { $('#refresh-ui').show(); } else { $('#refresh-ui').hide(); }
+        table.draw();
     });
 
-    // --- DataTables Init ---
-    var table = $('#afon-orders-table').DataTable({
-        "order": [[0, "desc"]],
-        "pageLength": 50,
-        "language": { "search": "Quick Search:" }
-    });
+    // Auto-Print using external file
+    const autoPrintID = new URLSearchParams(window.location.search).get('autoprint');
+    if (autoPrintID) {
+        $('#afd-print-frame').attr('src', "admin.php?page=awesome_food_delivery&tab=orders&order_id=" + autoPrintID + "&action=print").on('load', function() {
+            this.contentWindow.print();
+            window.history.replaceState({}, document.title, window.location.href.split('&autoprint=')[0]);
+        });
+    }
 
-    // --- Clock/Timer Logic ---
+    // Clocks
     var sT = <?php echo $server_now; ?>, bT = Math.floor(Date.now() / 1000), gap = sT - bT;
-    function updateClocks() {
+    setInterval(function updateClocks() {
         var now = Math.floor(Date.now() / 1000) + gap;
         $('.live-timer-js').each(function() {
             var diff = parseInt($(this).data('expiry')) - now;
@@ -318,32 +285,28 @@ jQuery(document).ready(function($){
                 $(this).find('.time-string').text((m < 10 ? "0"+m : m) + ":" + (s < 10 ? "0"+s : s)); 
             }
         });
-    }
-    setInterval(updateClocks, 1000); updateClocks();
+    }, 1000);
 
-    // --- Sound Alarm Logic ---
+    // Alarm
     const audio = document.getElementById('afdOrderAlarm');
-    const unlockBtn = document.getElementById('afd-alarm-unlock');
     const newOrders = <?php echo (int)$alarm_trigger_count; ?>;
-
-    if (sessionStorage.getItem('afd_audio_active') === 'true') {
-        unlockBtn.style.display = 'none';
-        if (newOrders > 0) {
-            audio.play().catch(e => { unlockBtn.style.display = 'flex'; });
-        }
+    if (sessionStorage.getItem('afd_audio_active') === 'true' && newOrders > 0) {
+        $('#afd-alarm-unlock').hide();
+        audio.play().catch(e => { $('#afd-alarm-unlock').show(); });
     }
-
-    unlockBtn.addEventListener('click', function() {
+    $('#afd-alarm-unlock').on('click', function() {
         sessionStorage.setItem('afd_audio_active', 'true');
-        unlockBtn.style.display = 'none';
-        if (newOrders > 0) { audio.play(); }
+        $(this).hide();
+        if (newOrders > 0) audio.play();
     });
 
-    // --- Auto Refresh countdown ---
+    // Refresh
     var refresh = 30;
     setInterval(function(){
-        refresh--; $('#timer-count').text(refresh);
-        if(refresh <= 0) location.reload();
+        if($('.filter-btn.active').data('status') === 'today') {
+            refresh--; $('#timer-count').text(refresh);
+            if(refresh <= 0) location.reload();
+        }
     }, 1000);
 });
 </script>
