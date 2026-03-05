@@ -140,8 +140,8 @@ function fd_add_edit_item_tab($edit_item_id = 0) {
 
                     <div class="afd-card">
                         <div class="afd-card-head">
-                            <h3>Available Add-ons / Extras</h3>
-                            <button type="button" class="btn-add-row" id="afd-add-row-trigger"><i class="fa fa-plus-circle"></i> Add Extra</button>
+                            <h3>Variants</h3>
+                            <button type="button" class="btn-add-row" id="afd-add-row-trigger"><i class="fa fa-plus-circle"></i> Add Variant</button>
                         </div>
                         <div class="afd-card-body">
                             <div id="afd-repeater-container">

@@ -2,10 +2,40 @@
 if (!defined('ABSPATH')) exit;
 
 /**
- * List View for Food Menu Items
- * Optimized for DataTable 1.13+ with Visibility Filtering
+ * 1. BACKEND AJAX HANDLER
+ * This handles the database update when the toggle is clicked.
+ * Ensure this is loaded in your plugin's main file or functions.php.
+ */
+add_action('wp_ajax_fd_toggle_item_status', 'fd_handle_status_toggle');
+function fd_handle_status_toggle() {
+    // Security check using Nonce
+    check_ajax_referer('fd_status_nonce', 'nonce');
+
+    if (!current_user_can('edit_posts')) {
+        wp_send_json_error('Unauthorized');
+    }
+
+    $item_id    = intval($_POST['item_id']);
+    $new_status = sanitize_text_field($_POST['status']); // 'publish' or 'pending'
+
+    if ($item_id > 0) {
+        $updated = wp_update_post([
+            'ID'          => $item_id,
+            'post_status' => $new_status
+        ]);
+
+        if (!is_wp_error($updated)) {
+            wp_send_json_success();
+        }
+    }
+    wp_send_json_error('Update failed');
+}
+
+/**
+ * 2. MAIN DASHBOARD VIEW
  */
 function fd_items_list() {
+    // Fetch all food items including drafts and pending
     $items = get_posts([
         'post_type'   => 'food_item',
         'numberposts' => -1, 
@@ -24,61 +54,49 @@ function fd_items_list() {
             --res-bg-soft: #fafafa;
         }
 
-        .afd-dashboard { margin-top: 20px; max-width: 1200px; }
+        .afd-dashboard { margin-top: 20px; max-width: 1200px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif; }
         
-        /* Filter Bar Styling */
+        /* Header & Filter Bar */
         .afd-filter-bar { 
-            display: flex; 
-            align-items: center; 
-            gap: 20px; 
-            background: #fff; 
-            padding: 15px 20px; 
-            border: 1px solid var(--res-border); 
-            border-radius: 8px; 
-            margin-bottom: 20px; 
-            box-shadow: 0 2px 4px rgba(0,0,0,.02);
+            display: flex; align-items: center; gap: 20px; background: #fff; 
+            padding: 15px 20px; border: 1px solid var(--res-border); 
+            border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,.02);
         }
         .afd-filter-group { display: flex; align-items: center; gap: 10px; }
         .afd-filter-group label { font-weight: 700; color: var(--res-dark); font-size: 13px; }
-        .afd-filter-select { 
-            border: 1px solid var(--res-border); 
-            border-radius: 6px; 
-            padding: 5px 30px 5px 12px; 
-            min-width: 160px; 
-            cursor: pointer;
-            height: 38px;
-        }
+        .afd-filter-select { border: 1px solid var(--res-border); border-radius: 6px; padding: 5px 12px; height: 38px; min-width: 160px; cursor: pointer; }
 
-        #fd-items-table { border: 1px solid var(--res-border); border-radius: 8px; overflow: hidden; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,.05); border-spacing: 0; width: 100%; }
-        #fd-items-table thead th { background: var(--res-bg-soft); padding: 15px; font-weight: 700; color: #50575e; border-bottom: 2px solid #f0f0f1; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
+        /* Table Styling */
+        #fd-items-table { border: 1px solid var(--res-border); background: #fff; border-radius: 8px; width: 100%; border-collapse: collapse; overflow: hidden; }
+        #fd-items-table thead th { background: var(--res-bg-soft); padding: 15px; text-align: left; font-size: 11px; text-transform: uppercase; color: #50575e; border-bottom: 2px solid #f0f0f1; letter-spacing: 0.5px; }
         #fd-items-table td { padding: 15px; vertical-align: middle; border-bottom: 1px solid #f0f0f1; }
         
-        /* Toggle Switch */
-        .fd-switch { position: relative; display: inline-block; width: 40px; height: 22px; }
+        /* Toggle Switch Styling */
+        .fd-switch { position: relative; display: inline-block; width: 42px; height: 22px; }
         .fd-switch input { opacity: 0; width: 0; height: 0; }
         .fd-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px; }
         .fd-slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
         input:checked + .fd-slider { background-color: var(--res-success); }
-        input:checked + .fd-slider:before { transform: translateX(18px); }
+        input:checked + .fd-slider:before { transform: translateX(20px); }
 
-        .fd-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; margin: 2px; border: 1px solid transparent; }
-        .fd-cat-badge { background: #fff9f9; color: var(--res-primary); border-color: #f5c2c2; }
-        
-        .fd-btn { padding: 8px 14px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; transition: 0.2s; border: 1px solid #dcdcde; background: #fff; color: #2c3338; }
-        .fd-btn:hover { border-color: var(--res-primary); color: var(--res-primary); background: #fff9f9; }
-        
-        /* DataTables Customizations */
-        .dataTables_wrapper .dataTables_filter { margin: 0; }
-        .dataTables_wrapper .dataTables_filter input { border: 1px solid var(--res-border); border-radius: 6px; padding: 8px 12px; width: 280px; margin: 0; outline: none; }
+        /* Components */
+        .fd-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; border: 1px solid #f5c2c2; background: #fff9f9; color: var(--res-primary); }
+        .fd-btn { padding: 8px 12px; border-radius: 6px; border: 1px solid #dcdcde; background: #fff; color: #2c3338; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; font-size: 13px; transition: 0.2s; }
+        .fd-btn:hover { color: var(--res-primary); border-color: var(--res-primary); background: #fff9f9; }
+        .fd-item-img { border-radius: 6px; border: 1px solid #eee; object-fit: cover; }
+        .fd-no-img { width: 50px; height: 50px; background: #f0f0f1; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #ccd0d4; }
+
+        /* DataTables Custom Overrides */
+        .dataTables_wrapper .dataTables_filter input { border: 1px solid var(--res-border); border-radius: 6px; padding: 8px 12px; width: 250px; outline: none; }
     </style>
 
     <div class="wrap afd-dashboard">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
             <div>
-                <h1 style="margin:0; font-weight: 800; font-size: 24px; color: var(--res-dark);">Menu Dashboard</h1>
-                <p style="color: #646970; margin: 5px 0 0;"><?php echo count($items); ?> items in catalog.</p>
+                <h1 style="margin:0; font-weight: 800; font-size: 24px; color: var(--res-dark);">Menu Items</h1>
+                <p style="color: #646970; margin: 5px 0 0;"><?php echo count($items); ?> Total items in catalog.</p>
             </div>
-            <a href="?page=awesome_food_delivery&tab=items&sub=add" class="button button-primary" style="background:var(--res-primary); border:none; font-weight:700; padding: 8px 25px; height: auto; border-radius: 6px;">+ Add Menu Item</a>
+            <a href="?page=awesome_food_delivery&tab=items&sub=add" class="button button-primary" style="background:var(--res-primary); border:none; padding: 8px 20px; height: auto; font-weight: 600; border-radius: 6px;">+ Add New Item</a>
         </div>
 
         <div class="afd-filter-bar">
@@ -87,70 +105,68 @@ function fd_items_list() {
                 <select id="visibility-filter" class="afd-filter-select">
                     <option value="">All Statuses</option>
                     <option value="Live">Live (Published)</option>
-                    <option value="Hidden">Hidden (Pending/Draft)</option>
+                    <option value="Hidden">Hidden (Draft/Pending)</option>
                 </select>
             </div>
-            <div style="margin-left: auto;" id="custom-search-container">
+            <div id="custom-search-wrap" style="margin-left:auto;">
                 </div>
         </div>
 
         <table id="fd-items-table" class="display nowrap">
             <thead>
                 <tr>
-                    <th width="80">Preview</th>
-                    <th>Item Information</th>
-                    <th>Categories</th>
-                    <th width="100">Visibility</th>
+                    <th width="60">Preview</th>
+                    <th>Item Info</th>
+                    <th>Category</th>
+                    <th width="80">Visibility</th>
                     <th width="100">Price</th>
-                    <th width="240" style="text-align: right;">Actions</th>
-                    <th style="display:none;">FilterKey</th> </tr>
+                    <th width="150" style="text-align:right;">Actions</th>
+                    <th style="display:none;">FilterKey</th> 
+                </tr>
             </thead>
             <tbody>
-                <?php if($items): 
-                    foreach($items as $item):
-                        $price    = get_post_meta($item->ID, 'price', true);
-                        $cats     = wp_get_post_terms($item->ID, 'food_category');
-                        $is_active = ($item->post_status === 'publish');
-                        $status_label = $is_active ? 'Live' : 'Hidden';
+                <?php if($items): foreach($items as $item): 
+                    $price = get_post_meta($item->ID, 'price', true);
+                    $cats = wp_get_post_terms($item->ID, 'food_category');
+                    $is_published = ($item->post_status === 'publish');
+                    $status_label = $is_published ? 'Live' : 'Hidden';
                 ?>
-                    <tr id="item-row-<?php echo $item->ID; ?>">
-                        <td>
-                            <?php if (has_post_thumbnail($item->ID)): ?>
-                                <?php echo get_the_post_thumbnail($item->ID, [50, 50], ['class' => 'fd-item-img']); ?>
-                            <?php else: ?>
-                                <div class="fd-no-img"><span class="dashicons dashicons-format-image"></span></div>
-                            <?php endif; ?>
-                        </td>
-                        <td>
-                            <strong style="font-size:15px; color: var(--res-dark); display: block;"><?php echo esc_html($item->post_title); ?></strong>
-                            <code style="background: #f0f0f1; color: #50575e; font-size: 10px; border-radius: 3px; padding: 1px 4px;">#<?php echo $item->ID; ?></code>
-                        </td>
-                        <td>
-                            <?php if($cats): foreach($cats as $c): ?>
-                                <span class="fd-badge fd-cat-badge"><?php echo esc_html($c->name); ?></span>
-                            <?php endforeach; else: echo '<span style="color:#a7aaad;">Uncategorized</span>'; endif; ?>
-                        </td>
-                        <td>
-                            <label class="fd-switch">
-                                <input type="checkbox" class="fd-status-toggle" data-id="<?php echo $item->ID; ?>" <?php checked($is_active); ?>>
-                                <span class="fd-slider"></span>
-                            </label>
-                        </td>
-                        <td>
-                            <strong style="font-size:16px; color: var(--res-primary);">
-                                <?php echo number_format(floatval($price), 2, '.', ''); ?> €
-                            </strong>
-                        </td>
-                        <td style="text-align: right;">
+                <tr id="item-row-<?php echo $item->ID; ?>">
+                    <td>
+                        <?php if (has_post_thumbnail($item->ID)): ?>
+                            <?php echo get_the_post_thumbnail($item->ID, [50, 50], ['class' => 'fd-item-img']); ?>
+                        <?php else: ?>
+                            <div class="fd-no-img"><span class="dashicons dashicons-format-image"></span></div>
+                        <?php endif; ?>
+                    </td>
+                    <td>
+                        <strong style="font-size:15px; color: var(--res-dark);"><?php echo esc_html($item->post_title); ?></strong><br>
+                        <code style="font-size: 10px; background: #f0f0f1; padding: 1px 4px; border-radius: 3px;">#<?php echo $item->ID; ?></code>
+                    </td>
+                    <td>
+                        <?php if(!empty($cats)): ?>
+                            <span class="fd-badge"><?php echo esc_html($cats[0]->name); ?></span>
+                        <?php else: echo '—'; endif; ?>
+                    </td>
+                    <td>
+                        <label class="fd-switch">
+                            <input type="checkbox" class="fd-status-toggle" data-id="<?php echo $item->ID; ?>" <?php checked($is_published); ?>>
+                            <span class="fd-slider"></span>
+                        </label>
+                    </td>
+                    <td><strong style="font-size:16px; color: var(--res-primary);"><?php echo number_format((float)$price, 2); ?> €</strong></td>
+                    <td align="right">
+                        <div style="display: flex; gap: 5px; justify-content: flex-end;">
                             <a class="fd-btn" href="?page=awesome_food_delivery&tab=items&sub=edit&item=<?php echo $item->ID; ?>">
-                                <span class="dashicons dashicons-edit"></span> Edit
+                                <span class="dashicons dashicons-edit"></span>
                             </a>
-                            <a class="fd-btn" style="color:red;" onclick="return confirm('Delete item?')" href="<?php echo wp_nonce_url(admin_url('admin-post.php?action=fd_delete_item&item='.$item->ID), 'fd_delete_item_'.$item->ID); ?>">
+                            <a class="fd-btn" style="color:#d63638;" onclick="return confirm('Delete this item?')" href="<?php echo wp_nonce_url(admin_url('admin-post.php?action=fd_delete_item&item='.$item->ID), 'fd_delete_item_'.$item->ID); ?>">
                                 <span class="dashicons dashicons-trash"></span>
                             </a>
-                        </td>
-                        <td style="display:none;"><?php echo $status_label; ?></td>
-                    </tr>
+                        </div>
+                    </td>
+                    <td style="display:none;"><?php echo $status_label; ?></td>
+                </tr>
                 <?php endforeach; endif; ?>
             </tbody>
         </table>
@@ -159,31 +175,38 @@ function fd_items_list() {
     <script>
     jQuery(document).ready(function($){
         if ($.fn.DataTable) {
-            // 1. Initialize Table
+            // 1. Initialize DataTable
             var table = $('#fd-items-table').DataTable({
-                "pageLength": 15,
+                "pageLength": 20,
                 "order": [[1, "asc"]],
                 "dom": '<"top"f>rt<"bottom"ip><"clear">',
-                "columnDefs": [ { "orderable": false, "targets": [0, 3, 5] } ],
-                "language": { "search": "", "searchPlaceholder": "Search menu..." }
+                "columnDefs": [
+                    { "orderable": false, "targets": [0, 3, 5] },
+                    { "visible": false, "targets": [6] } // Keep FilterKey hidden
+                ],
+                "language": { "search": "", "searchPlaceholder": "Search menu items..." }
             });
 
-            // 2. Move Search Box to our Filter Bar
-            $('.dataTables_filter').appendTo('#custom-search-container');
+            // 2. Relocate search box to the custom filter bar
+            $('.dataTables_filter').appendTo('#custom-search-wrap');
 
-            // 3. Visibility Filter Logic
+            // 3. DROPDOWN VISIBILITY FILTER
             $('#visibility-filter').on('change', function(){
                 var val = $(this).val();
-                table.column(6).search(val).draw();
+                // Perform a strict regex search on Column 6 (FilterKey)
+                // '^' + val + '$' ensures 'Hidden' doesn't partially match other words
+                table.column(6).search(val ? '^' + val + '$' : '', true, false).draw();
             });
 
-            // 4. AJAX Toggle Logic
+            // 4. AJAX TOGGLE SWITCH
             $('.fd-status-toggle').on('change', function(){
                 var $this = $(this);
                 var $row = $this.closest('tr');
                 var itemId = $this.data('id');
                 var isActive = $this.is(':checked');
+                var newLabel = isActive ? 'Live' : 'Hidden';
                 
+                // Dim switch during processing
                 $this.closest('.fd-switch').css('opacity', '0.5');
 
                 $.post(ajaxurl, {
@@ -194,16 +217,16 @@ function fd_items_list() {
                 }, function(res) {
                     $this.closest('.fd-switch').css('opacity', '1');
                     if(res.success) {
-                        // Update hidden column so the filter stays accurate
-                        table.cell($row, 6).data(isActive ? 'Live' : 'Hidden').draw(false);
+                        // CRITICAL: Update the DataTable memory so the filter works immediately
+                        table.cell($row, 6).data(newLabel).draw(false);
                     } else {
-                        alert('Error updating status.');
-                        $this.prop('checked', !isActive);
+                        alert('Error: Could not update status.');
+                        $this.prop('checked', !isActive); // Revert switch if failed
                     }
                 });
             });
         }
     });
     </script>
-<?php
+    <?php
 }

@@ -3,7 +3,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 /**
  * SHORTCODE: Main Food Ordering System (Menu + Cart)
- * Features: Original Desktop View + Mobile Hamburger Categories + Mobile Slide-out Cart
+ * Features: Variant Modal, Quantity Validation, Dynamic Charges.
  */
 function fd_food_items_shortcode() {
     wp_enqueue_style('dashicons');
@@ -13,12 +13,15 @@ function fd_food_items_shortcode() {
     $is_actually_open = ($store_status['status'] === 'open' || $store_status['status'] === 'warning');
     
     $currency = '£';
-    $saved_delivery_fee = get_option('afd_delivery_charge', '0.00');
-    $saved_service_fee  = get_option('afd_service_charge', '0.00');
-    $saved_bag_fee      = get_option('afd_bag_charge', '0.00');
-    $saved_discount     = get_option('afd_restaurant_discount', '0'); 
+    
+    $delivery_fee       = get_option('afd_delivery_charge', '0.00');
+    $collection_fee     = get_option('afd_pickup_charge', '0.00'); 
+    $service_fee        = get_option('afd_service_charge', '0.00');
+    $bag_fee            = get_option('afd_bag_charge', '0.00');
+    $delivery_discount   = get_option('afd_delivery_discount_percent', '0'); 
+    $collection_discount = get_option('afd_pickup_discount_percent', '0');
 
-    // --- DYNAMIC TIME CALCULATION ---
+    // DYNAMIC TIME CALCULATION
     $schedule    = get_option('afd_schedule', []);
     $current_day = current_datetime()->format('D');
     $time_options = [];
@@ -27,13 +30,11 @@ function fd_food_items_shortcode() {
         $start_ts = strtotime($schedule[$current_day]['open']);
         $end_ts   = strtotime($schedule[$current_day]['close']);
         if ($end_ts <= $start_ts) { $end_ts += 86400; }
-
         for ($t = $start_ts; $t <= $end_ts; $t += 3600) {
             $time_options[date('H:i', $t)] = date('h:i A', $t);
         }
     }
 
-    // 2. FETCH DATA
     $items = get_posts([
         'post_type'      => 'food_item',
         'posts_per_page' => -1,
@@ -63,172 +64,34 @@ function fd_food_items_shortcode() {
         $items_by_cat[$cat_slug]['items'][] = $item;
     }
 
-    $is_logged_in = is_user_logged_in() ? 'true' : 'false';
-    $login_url = site_url('/login/');
-
     ob_start(); ?>
 
 <style>
-    /* --- ORIGINAL DESKTOP STYLES (NO CHANGE) --- */
-    .fd-main-wrapper { max-width: 1200px; margin: 0 auto; padding: 40px 20px; font-family: 'Inter', sans-serif; background: #fcfcfc; }
-    .fd-search-container { margin-bottom: 40px; position: relative; }
-    .fd-menu-search { width: 100%; padding: 18px 25px 18px 55px; border-radius: 15px; border: 1px solid #ddd; font-size: 16px; box-shadow: 0 5px 15px rgba(0,0,0,0.05); outline: none; transition: 0.3s; }
-    .fd-menu-search:focus { border-color: #d63638; box-shadow: 0 5px 20px rgba(214, 54, 56, 0.15); }
-    .fd-search-icon { position: absolute; left: 20px; top: 50%; transform: translateY(-50%); color: #aaa; font-size: 20px; }
+    /* MODAL STYLES */
+    .fd-variant-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 99999; display: none; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
+    .fd-variant-modal.active { display: flex; }
+    .fd-vmodal-content { background: #fff; width: 90%; max-width: 420px; border-radius: 24px; overflow: hidden; animation: fd-slide-up 0.3s ease-out; box-shadow: 0 20px 40px rgba(0,0,0,0.2); }
+    .fd-vmodal-header { padding: 20px; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; background: #fff; }
+    .fd-vmodal-header h3 { margin: 0; font-size: 18px; font-weight: 800; color: #0f172a; }
+    #close-vmodal { cursor: pointer; color: #64748b; font-size: 24px; }
+    .fd-vmodal-body { padding: 20px; max-height: 50vh; overflow-y: auto; background: #fff; }
+    .fd-vmodal-footer { padding: 20px; background: #f8fafc; border-top: 1px solid #f1f5f9; }
+    .fd-v-row { display: flex; justify-content: space-between; align-items: center; padding: 16px; border: 2px solid #e2e8f0; border-radius: 16px; margin-bottom: 12px; cursor: pointer; transition: all 0.2s ease; }
+    .fd-v-row:hover { border-color: #d63638; background: #fff5f5; }
+    .fd-v-row.selected { border-color: #d63638; background: #fff5f5; }
+    .fd-v-name { font-weight: 700; color: #1e293b; display: block; }
+    .fd-v-price { font-size: 13px; color: #d63638; font-weight: 700; }
+    .v-check { width: 20px; height: 20px; border-radius: 50%; border: 2px solid #cbd5e1; display: flex; align-items: center; justify-content: center; }
+    .fd-v-row.selected .v-check { background: #d63638; border-color: #d63638; }
+    .fd-v-row.selected .v-check:after { content: ''; width: 6px; height: 6px; background: #fff; border-radius: 50%; }
     
-    .fd-category-grid {
-	grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-	gap: 15px;
-	width: 220px;
-}
-    .fd-cat-grid-item {
-	text-decoration: none !important;
-	/* text-align: center; */
-	transition: 0.3s ease;
-	display: flex;
-	align-items: center;
-	gap: 15px;
-	margin-bottom: 15px;
-	border-bottom: 1px solid #ddd;
-	padding-bottom: 15px;
-}
-    .fd-cat-grid-item:hover { transform: translateY(-5px); }
-    .fd-cat-grid-thumb { width: 60px; height: 60px; border-radius: 50%; background: #fff; overflow: hidden; border: 4px solid #fff; box-shadow: 0 10px 20px rgba(0,0,0,0.08); display: flex; align-items: center; justify-content: center; }
-    .fd-cat-grid-thumb img { width: 100%; height: 100%; object-fit: cover; }
-    .fd-cat-grid-item span { display: block; font-weight: 700; color: #1a1a1a; font-size: 14px; }
+    /* ADD TO CART OVERRIDE */
+    .fd-confirm-add-btn { width: 100%; padding: 16px; background: #d63638; color: #fff; border: none; border-radius: 14px; font-weight: 800; font-size: 16px; cursor: pointer; display: flex; justify-content: space-between; }
     
-    .fd-container { display: flex; flex-wrap: wrap; gap: 40px; }
-    .fd-menu-section { width: 480px; }
-    .fd-cart-sidebar { width: 380px; }
-    
-    .sub-heading { font-size: 28px; font-weight: 800; margin-bottom: 30px; color: #1a1a1a; border-left: 6px solid #d63638; padding-left: 20px; margin-top: 40px; }
-    .meal-items { list-style: none; padding: 0; margin: 0; }
-    .meal-items li { display: flex; align-items: flex-start; background: #fff; padding: 25px; border-radius: 20px; margin-bottom: 25px; border: 1px solid #f1f1f1; transition: 0.3s; box-shadow: 0 4px 6px rgba(0,0,0,0.02); }
-    .meal-items li .thumbnail {
-	width: 80px;
-	height: 80px;
-	min-width: 80px;
-	margin-right: 10px;
-	overflow: hidden;
-	border-radius: 15px;
-}
-    .meal-items li .thumbnail img { width: 100%; height: 100%; object-fit: cover; }
-    .meal-items li .content { flex: 1; }
-    .meal-items li .content .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-    .meal-items li .content .top .title h4 { margin: 0; font-size: 21px; font-weight: 700; color: #1a1a1a; }
-    .meal-items li .content .top .price span { color: #d63638; font-weight: 800; font-size: 21px; }
-    
-    .fd-sticky-panel {
-	background: #fff;
-	border-radius: 25px;
-	padding: 15px;
-	border: 1px solid #eee;
-	box-shadow: 0 20px 50px rgba(0,0,0,0.08);
-	display: flex;
-	flex-direction: column;
-	width: 320px;
-}
-    .fd-order-type { display: flex; gap: 10px; margin-bottom: 15px; background: #f0f0f1; padding: 6px; border-radius: 12px; }
-    .fd-type-label { flex: 1; text-align: center; cursor: pointer; padding: 10px; border-radius: 8px; font-weight: 700; transition: 0.3s; color: #666; }
-    .fd-order-type input { display: none; }
-    .fd-order-type input:checked + .fd-type-label { background: #d63638; color: #fff; }
-    
-    .fd-cart-item { border-bottom: 1px solid #f8f8f8; padding: 15px 0; }
-    .fd-checkout-btn { display: block; text-align: center; background:#d63638; color:#fff !important; padding:18px; border-radius:15px; margin-top:10px; font-weight:800; text-decoration: none !important; box-shadow: 0 10px 20px rgba(214, 54, 56, 0.2); }
-    .order-btn { padding: 12px 30px; background: #d63638; color: #fff; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; }
-    .fd-summary-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px; color: #666; }
-    .fd-summary-row.total-row { border-top: 2px dashed #eee; padding-top: 15px; margin-top: 10px; font-weight: 800; font-size: 22px; color: #1a1a1a; }
-    .fd-qty-selector { display: flex; align-items: center; gap: 10px; background: #f8f8f8; padding: 5px 10px; border-radius: 10px; border: 1px solid #eee; }
-    .fd-qty-selector span { font-weight: 800; font-size: 16px; min-width: 20px; text-align: center;line-height:22px }
-    .order-btn-align { display: flex; align-items: center; gap: 15px; margin-top: 15px; }
-    .fd-minus, .fd-plus, .fd-item-minus, .fd-item-plus { width: 28px; height: 28px; border-radius: 50%; border: 1px solid #ddd; background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-
-    /* --- MOBILE CATEGORY HAMBURGER TRIGGER --- */
-    .fd-mobile-cat-header { display: none; align-items: center; justify-content: space-between; margin-bottom: 20px; background: #fff; padding: 10px 15px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
-    .fd-cat-trigger { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 16px; cursor: pointer; color: #d63638; }
-    .fd-cat-trigger span.dashicons { font-size: 24px; width: 24px; height: 24px; }
-
-    /* --- MOBILE CATEGORY DRAWER --- */
-    .fd-cat-drawer { position: fixed; top: 0; left: -100%; width: 280px; height: 100%; background: #fff; z-index: 2005; transition: 0.4s ease; overflow-y: auto; box-shadow: 10px 0 30px rgba(0,0,0,0.1); }
-    .fd-cat-drawer.active { left: 0; }
-    .fd-cat-drawer-header { padding: 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
-    .fd-cat-drawer-list { padding: 10px 0; list-style: none; margin: 0; }
-    .fd-cat-drawer-list a { display: flex; align-items: center; gap: 15px; padding: 15px 20px; text-decoration: none !important; color: #1a1a1a; font-weight: 700; border-bottom: 1px solid #f9f9f9; }
-    .fd-cat-drawer-list img { width: 35px; height: 35px; border-radius: 50%; object-fit: cover; border: 1px solid #eee; }
-
-    /* --- MOBILE STYLES (MAX 991px) --- */
-    @media (max-width: 991px) {
-        .fd-category-grid { display: none; }
-        .fd-mobile-cat-header { display: flex; }
-        .fd-menu-section {
-	width: 100%;
-}
-        
-        /* Mobile Slide-out Cart */
-        .fd-cart-sidebar {
-            position: fixed; top: 0; right: -100%; width: 100%; height: 100%;
-            background: #fff; z-index: 2000; transition: 0.4s ease; padding: 0; overflow-y: auto;
-        }
-        .fd-cart-sidebar.active { right: 0; }
-        .fd-sticky-panel { border: none; box-shadow: none; border-radius: 0; min-height: 100vh; }
-        .fd-mobile-cart-header { display: flex; align-items: center; padding: 15px 20px; border-bottom: 1px solid #eee; position: sticky; top: 0; background: #fff; z-index: 10; }
-        .fd-close-cart { font-size: 24px; cursor: pointer; margin-right: 15px; }
-
-        /* Bottom Cart Bar */
-        .fd-bottom-cart-bar {
-            display: flex; position: fixed; bottom: 20px; left: 15px; right: 15px;
-            background: #d63638; color: #fff; padding: 15px 20px; border-radius: 15px;
-            z-index: 1000; justify-content: space-between; align-items: center;
-            box-shadow: 0 10px 25px rgba(214, 54, 56, 0.4); cursor: pointer;
-        }
-        .fd-bottom-cart-bar .info { font-weight: 800; font-size: 16px; }
-
-        .fd-container { flex-direction: column; }
-        .meal-items li .thumbnail { width: 100px; height: 100px; min-width: 100px; margin-right: 15px; }
-        .meal-items li { padding: 15px; }
-        .sub-heading { font-size: 22px; }
-        
-        /* Overlay for drawers */
-        .fd-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1999; }
-        .fd-overlay.active { display: block; }
-    }
-
-    @media (min-width: 992px) {
-        .fd-bottom-cart-bar, .fd-mobile-cart-header, .fd-overlay { display: none !important; }
-    }
-    @media (max-width: 991px) {
-  .fd-mobile-cat-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px 15px;
-    background: #fff;
-    width: 100%;
-    z-index: 1000;
-    border-bottom: 1px solid #eee;
-    box-sizing: border-box; /* Crucial for full-width padding */
-  }
-
-  /* The Sticky State */
-  .fd-mobile-cat-header.is-sticky {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0; /* Ensures it stretches edge-to-edge */
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    animation: slideDown 0.3s ease-out;
-    border-bottom: none;
-  }
-}
-
-@keyframes slideDown {
-  from { transform: translateY(-100%); }
-  to { transform: translateY(0); }
-}
+    @keyframes fd-slide-up { from { transform: translateY(30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 </style>
 
 <div class="fd-main-wrapper">
-
     <div class="fd-mobile-cat-header">
         <div class="fd-cat-trigger" id="fd-open-cats">
             <span class="dashicons dashicons-menu"></span>
@@ -240,16 +103,17 @@ function fd_food_items_shortcode() {
     <div class="fd-container">
         <div class="fd-category-grid">
             <div class="fd-search-container">
-        <span class="fd-search-icon">🔍</span>
-        <input type="text" id="fd-menu-search" class="fd-menu-search" placeholder="Search for your favorite food...">
-    </div>
-        <?php foreach ($items_by_cat as $slug => $cat) : ?>
-            <a href="#cat-<?php echo esc_attr($slug); ?>" class="fd-cat-grid-item">
-                <div class="fd-cat-grid-thumb"><img src="<?php echo esc_url($cat['img']); ?>" alt="Category"></div>
-                <span><?php echo esc_html($cat['name']); ?></span>
-            </a>
-        <?php endforeach; ?>
-    </div>
+                <span class="fd-search-icon">🔍</span>
+                <input type="text" id="fd-menu-search" class="fd-menu-search" placeholder="Search for your favorite food...">
+            </div>
+            <?php foreach ($items_by_cat as $slug => $cat) : ?>
+                <a href="#cat-<?php echo esc_attr($slug); ?>" class="fd-cat-grid-item">
+                    <div class="fd-cat-grid-thumb"><img src="<?php echo esc_url($cat['img']); ?>" alt="Category"></div>
+                    <span><?php echo esc_html($cat['name']); ?></span>
+                </a>
+            <?php endforeach; ?>
+        </div>
+
         <div class="fd-menu-section">
             <?php foreach ($items_by_cat as $slug => $cat_data) : ?>
                 <div id="cat-<?php echo esc_attr($slug); ?>" class="food-menu">
@@ -258,8 +122,15 @@ function fd_food_items_shortcode() {
                         <?php foreach ($cat_data['items'] as $item) : 
                             $price = get_post_meta($item->ID, 'price', true) ?: '0.00';
                             $img = get_the_post_thumbnail_url($item->ID, 'medium') ?: 'https://via.placeholder.com/130';
+                            $variants = get_post_meta($item->ID, 'fd_item_extras_repeater', true);
+                            $has_variants = !empty($variants) ? 'true' : 'false';
                         ?>
-                            <li class="fd-food-card" data-title="<?php echo esc_attr(strtolower($item->post_title)); ?>">
+                            <li class="fd-food-card" 
+                                data-id="<?php echo $item->ID; ?>"
+                                data-title="<?php echo esc_attr(strtolower($item->post_title)); ?>" 
+                                data-base-price="<?php echo esc_attr($price); ?>"
+                                data-has-variants="<?php echo $has_variants; ?>">
+                                
                                 <div class="thumbnail"><img src="<?php echo esc_url($img); ?>" alt="Food"></div>
                                 <div class="content">
                                     <div class="top">
@@ -267,13 +138,26 @@ function fd_food_items_shortcode() {
                                         <div class="price"><span><?php echo $currency . number_format((float)$price, 2); ?></span></div>
                                     </div>
                                     <div class="bottom"><p><?php echo wp_kses_post($item->post_content); ?></p></div>
+
+                                    <?php if (!empty($variants)) : ?>
+                                        <div class="fd-hidden-variants" style="display:none;">
+                                            <?php foreach ($variants as $v) : ?>
+                                                <div class="v-data" data-vname="<?php echo esc_attr($v['name']); ?>" data-vprice="<?php echo esc_attr($v['price']); ?>"></div>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    <?php endif; ?>
+
                                     <div class="order-btn-align">
                                         <div class="fd-qty-selector">
                                             <button class="fd-item-minus"><span class="dashicons dashicons-minus"></span></button>
-                                            <span class="fd-item-qty">0</span>
+                                            <span class="fd-item-qty">0</span> 
                                             <button class="fd-item-plus"><span class="dashicons dashicons-plus"></span></button>
                                         </div>
-                                        <button class="order-btn" data-name="<?php echo esc_attr($item->post_title); ?>" data-price="<?php echo esc_attr($price); ?>">Add to Order</button>
+                                        <button class="order-btn" 
+                                                data-name="<?php echo esc_attr($item->post_title); ?>" 
+                                                data-price="<?php echo esc_attr($price); ?>">
+                                            Add +
+                                        </button>
                                     </div>
                                 </div>
                             </li>
@@ -288,7 +172,6 @@ function fd_food_items_shortcode() {
                 <span class="fd-close-cart dashicons dashicons-arrow-left-alt2"></span>
                 <span style="font-weight:800; font-size:18px;">Review Order</span>
             </div>
-
             <div class="fd-sticky-panel">
                 <?php if (!$is_actually_open) : ?>
                     <div class="preorder-badge" style="background:#fffbeb; border:1px solid #fef3c7; color:#92400e; padding:12px; border-radius:12px; font-size:13px; font-weight:700; margin-bottom:20px; text-align:center;">
@@ -299,34 +182,61 @@ function fd_food_items_shortcode() {
                 <div class="fd-order-type">
                     <input type="radio" name="order_type" id="delivery" value="delivery" checked>
                     <label for="delivery" class="fd-type-label">Delivery</label>
-                    <input type="radio" name="order_type" id="pickup" value="pickup">
-                    <label for="pickup" class="fd-type-label">Pickup</label>
+                    <input type="radio" name="order_type" id="pickup" value="collection">
+                    <label for="pickup" class="fd-type-label">Collection</label>
                 </div>
 
                 <div class="fd-schedule-wrap" style="margin-bottom:20px;">
-                    <select id="fd-scheduled-time" class="fd-schedule-select" style="width:100%; padding:12px; border-radius:10px; border:1px solid #ddd; font-weight:600;">
-                        <?php if ($is_actually_open) : ?><option value="asap">ASAP (Fastest Delivery)</option><?php else : ?><option value="" disabled selected>Select Pre-Order Time</option><?php endif; ?>
-                        <?php foreach($time_options as $val => $lbl) echo '<option value="'.esc_attr($val).'">'.esc_html($lbl).'</option>'; ?>
+                    <label style="display:block; font-size:11px; font-weight:800; text-transform:uppercase; color:#666; margin-bottom:5px;">Select Time</label>
+                    <select id="fd-scheduled-time" class="fd-schedule-select" style="width:100%; padding:12px; border-radius:10px; border:1px solid #ddd; font-weight:600; background:#fff;">
+                        <?php if ($is_actually_open) : ?>
+                            <option value="asap">ASAP (Fastest)</option>
+                        <?php else : ?>
+                            <option value="" disabled selected>Select Pre-Order Time</option>
+                        <?php endif; ?>
+                        <?php foreach($time_options as $val => $lbl) : ?>
+                            <option value="<?php echo esc_attr($val); ?>"><?php echo esc_html($lbl); ?></option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
 
                 <h4 style="margin:0 0 15px 0; font-weight:800; font-size:20px;">Your Order</h4>
-                <div id="fd-cart-list"></div>
+                <div id="fd-cart-list" style="max-height: 300px; overflow-y: auto; margin-bottom: 20px;"></div>
 
                 <div class="fd-summary-container">
                     <div class="fd-summary-row"><span>Subtotal</span><span><?php echo $currency; ?><span id="br-subtotal">0.00</span></span></div>
-                    <div class="fd-summary-row"><span>Discount (<?php echo esc_html($saved_discount); ?>%)</span><span>-<?php echo $currency; ?><span id="br-discount-value">0.00</span></span></div>
-                    <div class="fd-summary-row" style="font-weight:700; color:#1a1a1a;"><span>Order total</span><span><?php echo $currency; ?><span id="br-order-total">0.00</span></span></div>
-                    <div class="fd-summary-row"><span>Service Charge</span><span><?php echo $currency . number_format((float)$saved_service_fee, 2); ?></span></div>
-                    <div id="fd-delivery-row" class="fd-summary-row"><span>Delivery</span><span><?php echo $currency . number_format((float)$saved_delivery_fee, 2); ?></span></div>
-                    <div class="fd-summary-row"><span>Bag Charge</span><span><?php echo $currency . number_format((float)$saved_bag_fee, 2); ?></span></div>
-                    <div class="fd-summary-row"><span>Tips</span><span><?php echo $currency; ?><input type="number" id="fd-tip-amount" class="fd-tip-input" value="0.00" step="0.50" min="0"></span></div>
-                    <div class="fd-summary-row total-row"><span>Total Due</span><span style="color:#d63638;"><?php echo $currency; ?><span id="fd-total-due">0.00</span></span></div>
-                    <textarea id="fd-kitchen-notes" class="fd-kitchen-notes" rows="2" placeholder="Any allergies?" style="width:100%; padding:10px; border-radius:10px; border:1px solid #ddd; margin-top:15px;"></textarea>
+                    <div class="fd-summary-row"><span id="lbl-discount-text">Discount</span><span>-<?php echo $currency; ?><span id="br-discount-value">0.00</span></span></div>
+                    <div class="fd-summary-row" style="font-weight:700; color:#1a1a1a; border-top: 1px dashed #ddd; padding-top: 10px; margin-top: 5px;"><span>Order Total</span><span><?php echo $currency; ?><span id="br-order-total">0.00</span></span></div>
+                    <div class="fd-summary-row"><span>Service Charge</span><span><?php echo $currency . number_format((float)$service_fee, 2); ?></span></div>
+                    <div class="fd-summary-row"><span><span id="lbl-fee-name">Delivery</span> Fee</span><span><?php echo $currency; ?><span id="lbl-fee-val">0.00</span></span></div>
+                    <div class="fd-summary-row"><span>Bag Charge</span><span><?php echo $currency . number_format((float)$bag_fee, 2); ?></span></div>
+                    <div class="fd-summary-row"><span>Driver Tip</span><span style="display:flex; align-items:center; gap:5px;"><?php echo $currency; ?><input type="number" id="fd-tip-amount" class="fd-tip-input" value="0.00" step="0.50" min="0" style="width:60px; text-align:right; border:1px solid #eee; border-radius:5px; padding:2px 5px;"></span></div>
+                    <div class="fd-summary-row total-row" style="background: #fef2f2; padding: 15px; border-radius: 12px; margin-top: 15px;"><span style="font-weight:800;">Total Due</span><span style="color:#d63638; font-size: 22px; font-weight: 900;"><?php echo $currency; ?><span id="fd-total-due">0.00</span></span></div>
+                    <textarea id="fd-kitchen-notes" class="fd-kitchen-notes" rows="2" placeholder="Any allergies or special requests?" style="width:100%; padding:10px; border-radius:10px; border:1px solid #ddd; margin-top:15px; font-size:13px;"></textarea>
                 </div>
-
-                <a href="#" class="fd-checkout-btn" id="fd-checkout-trigger"><?php echo $is_actually_open ? 'Confirm Order' : 'Place Pre-Order'; ?></a>
+                <a href="#" class="fd-checkout-btn" id="fd-checkout-trigger" style="display:block; text-align:center; text-decoration:none;">
+                    <?php echo $is_actually_open ? 'Confirm Order' : 'Place Pre-Order'; ?>
+                </a>
             </div>
+        </div>
+    </div>
+</div>
+
+<div class="fd-variant-modal" id="fd-variant-modal">
+    <div class="fd-vmodal-content">
+        <div class="fd-vmodal-header">
+            <h3>Customise Item</h3>
+            <span class="dashicons dashicons-no-alt" id="close-vmodal"></span>
+        </div>
+        <div class="fd-vmodal-body">
+            <p id="vmodal-item-info" style="font-size:13px; color:#64748b; margin-bottom:15px; font-weight:600;"></p>
+            <div id="vmodal-options-list"></div>
+        </div>
+        <div class="fd-vmodal-footer">
+            <button id="vmodal-confirm-btn" class="fd-confirm-add-btn">
+                <span>Add to Order</span>
+                <span id="vmodal-total-price">0.00</span>
+            </button>
         </div>
     </div>
 </div>
@@ -356,11 +266,17 @@ function fd_food_items_shortcode() {
 <script>
 jQuery(document).ready(function($){
     let cart = JSON.parse(localStorage.getItem('fd_cart_save')) || [];
-    const delFee = parseFloat("<?php echo $saved_delivery_fee; ?>") || 0;
-    const srvFee = parseFloat("<?php echo $saved_service_fee; ?>") || 0;
-    const bagFee = parseFloat("<?php echo $saved_bag_fee; ?>") || 0;
-    const resDiscountPercent = parseFloat("<?php echo $saved_discount; ?>") || 0; 
-    const currency = "<?php echo $currency; ?>";
+    let pendingItem = null; 
+    
+    const config = {
+        deliveryFee: parseFloat("<?php echo $delivery_fee; ?>") || 0,
+        collectionFee: parseFloat("<?php echo $collection_fee; ?>") || 0,
+        serviceFee: parseFloat("<?php echo $service_fee; ?>") || 0,
+        bagFee: parseFloat("<?php echo $bag_fee; ?>") || 0,
+        deliveryDiscount: parseFloat("<?php echo $delivery_discount; ?>") || 0,
+        collectionDiscount: parseFloat("<?php echo $collection_discount; ?>") || 0,
+        currency: "<?php echo $currency; ?>"
+    };
 
     function updateCart() {
         const container = $('#fd-cart-list');
@@ -368,7 +284,7 @@ jQuery(document).ready(function($){
         let subtotal = 0, count = 0;
 
         if(cart.length === 0) {
-            container.html('<div style="color:#bbb; text-align:center; padding: 20px 0;">Your cart is empty</div>');
+            container.html('<div style="color:#bbb; text-align:center; padding: 40px 0;">Your cart is empty</div>');
             $('#fd-checkout-trigger').css({'opacity': '0.5', 'pointer-events': 'none'});
             $('#fd-mobile-trigger').fadeOut();
         } else {
@@ -377,155 +293,175 @@ jQuery(document).ready(function($){
         }
 
         cart.forEach((item, index) => {
-            const rowTotal = item.price * item.qty;
-            subtotal += rowTotal; count += item.qty;
+            const itemUnitPrice = parseFloat(item.price) + (parseFloat(item.vPrice) || 0);
+            const rowTotal = itemUnitPrice * item.qty;
+            subtotal += rowTotal; 
+            count += item.qty;
+
             container.append(`
-                <div class="fd-cart-item">
-                    <div style="display:flex; justify-content:space-between; font-weight:700;">
-                        <span>${item.name}</span>
-                        <button class="fd-delete" data-index="${index}" style="color:#ff4d4d; background:none; border:none; cursor:pointer;"><span class="dashicons dashicons-trash"></span></button>
+                <div class="fd-cart-item" style="padding:12px 0; border-bottom:1px solid #eee;">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                        <div>
+                            <div style="font-weight:700; font-size:15px;">${item.name}</div>
+                            ${item.vName ? `<div style="font-size:11px; color:#d63638; font-weight:700;">${item.vName} (+${config.currency}${item.vPrice.toFixed(2)})</div>` : ''}
+                        </div>
+                        <button class="fd-delete" data-index="${index}" style="color:#ccc; background:none; border:none; cursor:pointer;"><span class="dashicons dashicons-trash"></span></button>
                     </div>
-                    <div style="display:flex; align-items:center; gap:12px; margin-top:5px;">
-                        <button class="fd-minus" data-index="${index}"><span class="dashicons dashicons-minus"></span></button>
-                        <span style="font-weight:800;">${item.qty}</span>
-                        <button class="fd-plus" data-index="${index}"><span class="dashicons dashicons-plus"></span></button>
-                        <span style="margin-left:auto; font-weight:700; color:#d63638;">${currency}${rowTotal.toFixed(2)}</span>
+                    <div style="display:flex; align-items:center; justify-content:space-between; margin-top:10px;">
+                        <div style="display:flex; align-items:center; gap:10px; background:#f5f5f5; padding:3px 10px; border-radius:8px;">
+                            <button class="fd-minus" data-index="${index}" style="border:none; background:none; cursor:pointer; font-weight:bold;">-</button>
+                            <span style="font-weight:800; font-size:14px;">${item.qty}</span>
+                            <button class="fd-plus" data-index="${index}" style="border:none; background:none; cursor:pointer; font-weight:bold;">+</button>
+                        </div>
+                        <div style="font-weight:700; color:#1a1a1a;">${config.currency}${rowTotal.toFixed(2)}</div>
                     </div>
                 </div>
             `);
         });
 
         let isDel = $('input[name="order_type"]:checked').val() === 'delivery';
+        let activeFee = isDel ? config.deliveryFee : config.collectionFee;
+        let activeDiscPercent = isDel ? config.deliveryDiscount : config.collectionDiscount;
         let tip = parseFloat($('#fd-tip-amount').val()) || 0;
-        let disc = (subtotal * resDiscountPercent) / 100;
-        let ordTotal = Math.max(0, subtotal - disc);
+        let discountVal = (subtotal * activeDiscPercent) / 100;
+        let orderTotal = Math.max(0, subtotal - discountVal);
         
         $('#br-subtotal').text(subtotal.toFixed(2));
-        $('#br-discount-value').text(disc.toFixed(2));
-        $('#br-order-total').text(ordTotal.toFixed(2));
-        if(!isDel) $('#fd-delivery-row').hide(); else $('#fd-delivery-row').show();
+        $('#lbl-discount-text').text(isDel ? `Delivery Discount (${activeDiscPercent}%)` : `Collection Discount (${activeDiscPercent}%)`);
+        $('#br-discount-value').text(discountVal.toFixed(2));
+        $('#br-order-total').text(orderTotal.toFixed(2));
+        $('#lbl-fee-name').text(isDel ? 'Delivery' : 'Collection');
+        $('#lbl-fee-val').text(activeFee.toFixed(2));
 
-        let totalDue = subtotal > 0 ? (ordTotal + srvFee + (isDel ? delFee : 0) + bagFee + tip) : 0;
+        let totalDue = subtotal > 0 ? (orderTotal + config.serviceFee + activeFee + config.bagFee + tip) : 0;
         $('#fd-total-due, #m-total').text(totalDue.toFixed(2));
         $('#m-count').text(count);
         localStorage.setItem('fd_cart_save', JSON.stringify(cart));
     }
 
-    // --- Drawer Controls ---
-    function closeDrawers() { $('.fd-cat-drawer, .fd-cart-sidebar, #fd-overlay').removeClass('active'); }
-    $('#fd-open-cats').on('click', function() { $('#fd-cat-drawer, #fd-overlay').addClass('active'); });
-    $('#fd-mobile-trigger').on('click', function() { $('#fd-cart-sidebar, #fd-overlay').addClass('active'); });
-    $('#fd-close-cats, .fd-close-cart, #fd-overlay, .fd-drawer-cat-link').on('click', function() { closeDrawers(); });
+    // Modal Logic
+    function calculateModalTotal() {
+        if (!pendingItem) return;
+        const vPrice = parseFloat($('.fd-v-row.selected').data('vprice')) || 0;
+        const total = (pendingItem.price + vPrice) * pendingItem.qty;
+        $('#vmodal-total-price').text(config.currency + total.toFixed(2));
+    }
 
-    $(window).scroll(function() {
-        const header = $('.fd-mobile-cat-header');
-        const scroll = $(window).scrollTop();
+    function openVModal(itemData, variants) {
+        pendingItem = itemData;
+        $('#vmodal-item-info').text(`${itemData.name} (Quantity: ${itemData.qty})`);
+        let list = $('#vmodal-options-list').empty();
+        variants.forEach((v, idx) => {
+            list.append(`
+                <div class="fd-v-row ${idx === 0 ? 'selected' : ''}" data-vname="${v.name}" data-vprice="${v.price}">
+                    <div class="fd-v-info">
+                        <span class="fd-v-name">${v.name}</span>
+                        <span class="fd-v-price">+${config.currency}${parseFloat(v.price).toFixed(2)}</span>
+                    </div>
+                    <div class="v-check"></div>
+                </div>
+            `);
+        });
+        calculateModalTotal();
+        $('#fd-variant-modal').addClass('active');
+    }
 
-        if (scroll >= 50) {
-            header.addClass('is-sticky');
+    $(document).on('click', '.fd-v-row', function() {
+        $('.fd-v-row').removeClass('selected');
+        $(this).addClass('selected');
+        calculateModalTotal();
+    });
+
+    $('#close-vmodal').on('click', function() { $('#fd-variant-modal').removeClass('active'); });
+
+    // Main Interaction
+    $(document).on('click', '.order-btn', function() {
+        const $card = $(this).closest('.fd-food-card');
+        const qty = parseInt($card.find('.fd-item-qty').text());
+
+        if (qty <= 0) {
+            alert("Please select a quantity first!");
+            return;
+        }
+
+        const itemData = {
+            id: $card.data('id'),
+            name: $(this).data('name'),
+            price: parseFloat($card.data('base-price')),
+            qty: qty
+        };
+
+        if ($card.data('has-variants')) {
+            let variants = [];
+            $card.find('.fd-hidden-variants .v-data').each(function() {
+                variants.push({ name: $(this).data('vname'), price: $(this).data('vprice') });
+            });
+            openVModal(itemData, variants);
         } else {
-            header.removeClass('is-sticky');
+            addToCart(itemData, '', 0);
+            resetCard($card);
         }
     });
 
-    // --- Fixed UI Interactions (Initial Value 0) ---
-
-// 1. Menu Item Plus
-$(document).on('click', '.fd-item-plus', function() {
-    let s = $(this).siblings('.fd-item-qty');
-    s.text(parseInt(s.text()) + 1);
-});
-
-// 2. Menu Item Minus (Allows going down to 0)
-$(document).on('click', '.fd-item-minus', function() {
-    let s = $(this).siblings('.fd-item-qty');
-    let val = parseInt(s.text());
-    if (val > 0) s.text(val - 1);
-});
-
-// 3. Add to Cart Button Logic (With "Added!" feedback)
-$(document).on('click', '.order-btn', function() {
-    const $btn = $(this); // Capture the button element
-    const name = $btn.data('name');
-    const price = parseFloat($btn.data('price'));
-    
-    // Check quantity
-    const $qtyElem = $btn.siblings('.fd-qty-mini, .fd-qty-selector').find('.fd-item-qty');
-    const qty = parseInt($qtyElem.text());
-
-    if (qty <= 0) {
-        alert("Please select a quantity first");
-        return;
-    }
-
-    // Update Cart Array
-    const exist = cart.find(i => i.name === name);
-    if (exist) {
-        exist.qty += qty;
-    } else {
-        cart.push({ name, price, qty });
-    }
-
-    // --- FEEDBACK ANIMATION ---
-    const originalText = $btn.text(); // Save current text (e.g., "Add")
-    $btn.text('Added!').prop('disabled', true).addClass('added-success');
-    
-    setTimeout(function() {
-        $btn.text(originalText).prop('disabled', false).removeClass('added-success');
-    }, 1500); // 1.5 seconds delay
-    // --------------------------
-
-    $qtyElem.text(0); // Reset counter to 0
-    updateCart();
-});
-
-// 4. Cart Sidebar Plus/Minus
-$(document).on('click', '.fd-plus', function() { 
-    cart[$(this).data('index')].qty += 1; 
-    updateCart(); 
-});
-
-$(document).on('click', '.fd-minus', function() {
-    const idx = $(this).data('index');
-    if (cart[idx].qty > 1) {
-        cart[idx].qty -= 1; 
-    } else {
-        cart.splice(idx, 1); 
-    }
-    updateCart();
-});
-
-// 5. Delete & Settings
-$(document).on('click', '.fd-delete', function() { 
-    cart.splice($(this).data('index'), 1); 
-    updateCart(); 
-});
-
-$('input[name="order_type"], #fd-tip-amount').on('change input', updateCart);
-
-// 6. Search Filter
-$('#fd-menu-search').on('keyup', function() {
-    let val = $(this).val().toLowerCase();
-    $('.fd-food-card').each(function() { 
-        $(this).toggle($(this).data('title').indexOf(val) > -1); 
+    $('#vmodal-confirm-btn').on('click', function() {
+        const $selected = $('.fd-v-row.selected');
+        if (!$selected.length) return;
+        addToCart(pendingItem, $selected.data('vname'), parseFloat($selected.data('vprice')));
+        $('#fd-variant-modal').removeClass('active');
+        resetCard($(`.fd-food-card[data-id="${pendingItem.id}"]`));
     });
-});
 
-// 7. Checkout Trigger
-$(document).on('click', '#fd-checkout-trigger', function(e) {
-    e.preventDefault();
-    if (cart.length === 0) { alert("Your cart is empty"); return; }
+    function addToCart(item, vName, vPrice) {
+        const exist = cart.find(i => i.name === item.name && i.vName === vName);
+        if (exist) { exist.qty += item.qty; } 
+        else { cart.push({ name: item.name, price: item.price, qty: item.qty, vName, vPrice }); }
+        updateCart();
+    }
+
+    function resetCard($card) {
+        const $btn = $card.find('.order-btn');
+        const oldHtml = $btn.html();
+        $btn.html('Added!').prop('disabled', true).css('background', '#10b981');
+        setTimeout(() => {
+            $card.find('.fd-item-qty').text(0);
+            $btn.html(oldHtml).prop('disabled', false).css('background', '');
+        }, 800);
+    }
+
+    // Helper Events
+    $(document).on('click', '.fd-item-plus', function() { let s = $(this).siblings('.fd-item-qty'); s.text(parseInt(s.text()) + 1); });
+    $(document).on('click', '.fd-item-minus', function() { let s = $(this).siblings('.fd-item-qty'); let val = parseInt(s.text()); if (val > 0) s.text(val - 1); });
     
-    localStorage.setItem('fd_scheduled_time', $('#fd-scheduled-time').val());
-    localStorage.setItem('fd_kitchen_notes', $('#fd-kitchen-notes').val());
-    
-    // Redirect logic
-    const isLoggedIn = <?php echo is_user_logged_in() ? 'true' : 'false'; ?>;
-    const checkoutUrl = "<?php echo home_url('/checkout'); ?>";
-    const loginUrl = "<?php echo site_url('/login/'); ?>";
-    
-    window.location.href = isLoggedIn ? checkoutUrl : loginUrl + "?redirect_to=" + encodeURIComponent(window.location.href);
-});
+    // Sidebar Controls
+    $(document).on('click', '.fd-plus', function() { cart[$(this).data('index')].qty += 1; updateCart(); });
+    $(document).on('click', '.fd-minus', function() { 
+        const idx = $(this).data('index'); 
+        if (cart[idx].qty > 1) { cart[idx].qty -= 1; } else { cart.splice(idx, 1); } 
+        updateCart(); 
+    });
+    $(document).on('click', '.fd-delete', function() { cart.splice($(this).data('index'), 1); updateCart(); });
+
+    // Drawer Toggles
+    $('#fd-open-cats').on('click', function() { $('#fd-cat-drawer, #fd-overlay').addClass('active'); });
+    $('#fd-mobile-trigger').on('click', function() { $('#fd-cart-sidebar, #fd-overlay').addClass('active'); });
+    $('#fd-close-cats, .fd-close-cart, #fd-overlay').on('click', function() { $('.fd-cat-drawer, .fd-cart-sidebar, #fd-overlay').removeClass('active'); });
+
+    // Search
+    $('#fd-menu-search').on('keyup', function() {
+        let val = $(this).val().toLowerCase();
+        $('.fd-food-card').each(function() { $(this).toggle($(this).data('title').indexOf(val) > -1); });
+    });
+
+    $('input[name="order_type"], #fd-tip-amount').on('change input', updateCart);
+
+    $(document).on('click', '#fd-checkout-trigger', function(e) {
+        e.preventDefault();
+        if (cart.length === 0) return;
+        localStorage.setItem('fd_scheduled_time', $('#fd-scheduled-time').val());
+        localStorage.setItem('fd_kitchen_notes', $('#fd-kitchen-notes').val());
+        localStorage.setItem('fd_order_type', $('input[name="order_type"]:checked').val());
+        window.location.href = "<?php echo home_url('/checkout'); ?>";
+    });
 
     updateCart();
 });

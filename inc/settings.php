@@ -2,7 +2,7 @@
 /**
  * RESTAURANT OPERATIONS ENGINE
  * Includes: Global Status Logic, Admin Dashboard, and Frontend Modal
- * Updated: Discount field changed to Percentage (%)
+ * Updated: Discount split into Delivery % and Pickup %
  */
 
 // --- 1. THE LOGIC ENGINE ---
@@ -22,8 +22,8 @@ if ( ! function_exists( 'get_afd_restaurant_status' ) ) {
         }
 
         $day_settings = $schedule[$current_day];
-        $open_ts      = strtotime($day_settings['open']);
-        $close_ts     = strtotime($day_settings['close']);
+        $open_ts       = strtotime($day_settings['open']);
+        $close_ts      = strtotime($day_settings['close']);
 
         $is_open = ($close_ts < $open_ts) 
             ? ($current_ts >= $open_ts || $current_ts <= $close_ts) 
@@ -118,7 +118,11 @@ function fd_settings_tab() {
         update_option('afd_pickup_charge', sanitize_text_field($_POST['afd_pickup_charge']));
         update_option('afd_service_charge', sanitize_text_field($_POST['afd_service_charge']));
         update_option('afd_bag_charge', sanitize_text_field($_POST['afd_bag_charge']));
-        update_option('afd_restaurant_discount', sanitize_text_field($_POST['afd_restaurant_discount'])); 
+        
+        // Split Discount Updates
+        update_option('afd_delivery_discount_percent', sanitize_text_field($_POST['afd_delivery_discount_percent'])); 
+        update_option('afd_pickup_discount_percent', sanitize_text_field($_POST['afd_pickup_discount_percent'])); 
+        
         update_option('afd_cooking_time', sanitize_text_field($_POST['afd_cooking_time'])); 
         
         $new_schedule = [];
@@ -135,14 +139,18 @@ function fd_settings_tab() {
         echo '<div class="afd-sync-toast"><span class="dashicons dashicons-saved"></span> Settings synchronized successfully</div>';
     }
 
-    $schedule         = get_option('afd_schedule', []);
-    $message          = get_option('afd_status_message', 'Sorry, we are currently closed!');
-    $warning_msg      = get_option('afd_warning_message', 'Hurry! We are closing in %min% minutes.');
-    $delivery_charge  = get_option('afd_delivery_charge', '0.00');
-    $pickup_charge  = get_option('afd_pickup_charge', '0.00');
-    $service_charge   = get_option('afd_service_charge', '0.00');
-    $bag_charge       = get_option('afd_bag_charge', '0.00');
-    $discount_percent = get_option('afd_restaurant_discount', '0'); 
+    $schedule           = get_option('afd_schedule', []);
+    $message            = get_option('afd_status_message', 'Sorry, we are currently closed!');
+    $warning_msg        = get_option('afd_warning_message', 'Hurry! We are closing in %min% minutes.');
+    $delivery_charge    = get_option('afd_delivery_charge', '0.00');
+    $pickup_charge      = get_option('afd_pickup_charge', '0.00');
+    $service_charge     = get_option('afd_service_charge', '0.00');
+    $bag_charge         = get_option('afd_bag_charge', '0.00');
+    
+    // Split Discount Retrieval
+    $del_discount_percent = get_option('afd_delivery_discount_percent', '0'); 
+    $pic_discount_percent = get_option('afd_pickup_discount_percent', '0'); 
+
     $cooking_time     = get_option('afd_cooking_time', '20-30');
     $status_info      = get_afd_restaurant_status();
     $days_of_week     = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -230,7 +238,7 @@ function fd_settings_tab() {
                         </div>
 
                         <div class="input-field" style="margin-top: 15px;">
-                            <label>Pickup Charge (£)</label>
+                            <label>Collection Charge (£)</label>
                             <div class="currency-input">
                                 <span class="currency-symbol">£</span>
                                 <input type="text" name="afd_pickup_charge" value="<?php echo esc_attr($pickup_charge); ?>" placeholder="0.00">
@@ -254,9 +262,17 @@ function fd_settings_tab() {
                         </div>
 
                         <div class="input-field" style="margin-top: 15px;">
-                            <label>Restaurant Discount (%)</label>
+                            <label>Delivery Discount (%)</label>
                             <div class="currency-input">
-                                <input type="text" name="afd_restaurant_discount" value="<?php echo esc_attr($discount_percent); ?>" placeholder="0" style="padding-left: 12px; padding-right: 28px;">
+                                <input type="text" name="afd_delivery_discount_percent" value="<?php echo esc_attr($del_discount_percent); ?>" placeholder="0" style="padding-left: 12px; padding-right: 28px;">
+                                <span class="currency-symbol" style="left: auto; right: 12px;">%</span>
+                            </div>
+                        </div>
+
+                        <div class="input-field" style="margin-top: 15px;">
+                            <label>Collection Discount (%)</label>
+                            <div class="currency-input">
+                                <input type="text" name="afd_pickup_discount_percent" value="<?php echo esc_attr($pic_discount_percent); ?>" placeholder="0" style="padding-left: 12px; padding-right: 28px;">
                                 <span class="currency-symbol" style="left: auto; right: 12px;">%</span>
                             </div>
                         </div>

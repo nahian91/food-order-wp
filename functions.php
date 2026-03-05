@@ -163,6 +163,7 @@ function awesome_food_delivery_scripts() {
 	wp_enqueue_script( 'validnavs', $theme_uri . '/assets/js/validnavs.js', array('jquery'), _S_VERSION, true );
 	wp_enqueue_script( 'datepicker', $theme_uri . '/assets/js/bootstrap-datepicker.js', array('jquery'), _S_VERSION, true );
 	wp_enqueue_script( 'gsap', $theme_uri . '/assets/js/gsap.js', array(), _S_VERSION, true );
+	wp_enqueue_script( 'items', $theme_uri . '/assets/js/items.js', array('jquery'), _S_VERSION, true );
 	wp_enqueue_script( 'scrolltrigger', $theme_uri . '/assets/js/ScrollTrigger.min.js', array('gsap'), _S_VERSION, true );
 	wp_enqueue_script( 'splittext', $theme_uri . '/assets/js/SplitText.min.js', array('gsap'), _S_VERSION, true );
 
@@ -396,7 +397,7 @@ function fd_main_page(){
         if (!(isset($_GET['action']) && $_GET['action'] === 'print')) :
         ?>
         <ul class="afd-left-tabs">
-            <!-- <li><a class="<?php //echo ($active === 'dashboard') ? 'active' : ''; ?>" href="<?php //echo admin_url('admin.php?page=awesome_food_delivery&tab=dashboard'); ?>">Dashboard</a></li> -->
+            <li><a class="<?php echo ($active === 'dashboard') ? 'active' : ''; ?>" href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=dashboard'); ?>">Dashboard</a></li>
             <li><a class="<?php echo ($active === 'orders') ? 'active' : ''; ?>" href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=orders'); ?>">Orders</a></li>
             <li><a class="<?php echo ($active === 'items') ? 'active' : ''; ?>" href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=items'); ?>">Items</a></li>
             <li><a class="<?php echo ($active === 'categories') ? 'active' : ''; ?>" href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=categories'); ?>">Categories</a></li>
@@ -410,7 +411,7 @@ function fd_main_page(){
             <div class="afd-right-box">
                 <?php
                 switch($active){
-                    //case 'dashboard':  fd_dashboard_tab(); break;
+                    case 'dashboard':  fd_dashboard_tab(); break;
                     case 'orders':     fd_orders_tab(); break;
                     case 'items':      fd_items_tab(); break;
                     case 'categories': fd_category_tab(); break;
@@ -426,7 +427,7 @@ function fd_main_page(){
     <?php
 }
 
-// require_once get_template_directory() . '/inc/dashboard.php';
+require_once get_template_directory() . '/inc/dashboard.php';
 require_once get_template_directory() . '/inc/orders.php';
 require_once get_template_directory() . '/inc/items.php';
 require_once get_template_directory() . '/inc/categories.php';
