@@ -89,6 +89,101 @@ function fd_food_items_shortcode() {
     .fd-confirm-add-btn { width: 100%; padding: 16px; background: #d63638; color: #fff; border: none; border-radius: 14px; font-weight: 800; font-size: 16px; cursor: pointer; display: flex; justify-content: space-between; }
     
     @keyframes fd-slide-up { from { transform: translateY(30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    /* STICKY LAYOUT ADAPTATION */
+.fd-container {
+    display: flex;
+    align-items: flex-start; /* Required for sticky to work */
+    gap: 20px;
+    position: relative;
+}
+
+/* 1. STICKY CATEGORY GRID */
+.fd-category-grid {
+    position: sticky;
+    top: 80px; /* Adjust based on your header height */
+    height: fit-content;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+    z-index: 10;
+}
+
+/* 2. STICKY CART SIDEBAR */
+.fd-cart-sidebar {
+    position: sticky;
+    top: 80px; /* Adjust based on your header height */
+    height: fit-content;
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+    display: block; /* Ensure it's visible for desktop sticky */
+}
+
+/* 3. MENU SECTION (The scrollable area) */
+.fd-menu-section {
+    flex: 1;
+}
+
+/* MOBILE FIX: Disable sticky on small screens where they become drawers */
+@media (max-width: 991px) {
+    .fd-category-grid, .fd-cart-sidebar {
+        position: static;
+        height: auto;
+        max-height: none;
+    }
+    
+    .fd-cart-sidebar {
+        position: fixed; /* Keeps your existing drawer logic */
+        top: 0;
+        right: -100%;
+        height: 100%;
+        z-index: 999999;
+        transition: 0.3s;
+    }
+    
+    .fd-cart-sidebar.active {
+        right: 0;
+    }
+}
+
+/* Custom Scrollbar for sticky areas */
+.fd-category-grid::-webkit-scrollbar, 
+.fd-cart-sidebar::-webkit-scrollbar {
+    width: 4px;
+}
+.fd-category-grid::-webkit-scrollbar-thumb, 
+.fd-cart-sidebar::-webkit-scrollbar-thumb {
+    background: #e2e8f0;
+    border-radius: 10px;
+}
+/* STICKY MOBILE CATEGORY HEADER */
+.fd-mobile-cat-header {
+    position: sticky;
+    top: 0; /* Matches WP Admin Bar height on mobile */
+    z-index: 30;
+    background: #ffffff;
+    padding: 15px 20px;
+    border-bottom: 1px solid #f1f5f9;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* Adjust top position if user is NOT logged in (No Admin Bar) */
+body:not(.admin-bar) .fd-mobile-cat-header {
+    top: 0;
+}
+
+/* Ensure the main container doesn't overlap on mobile */
+@media (max-width: 991px) {
+    .fd-container {
+        padding-top: 10px;
+    }
+    
+    /* Ensure category grid doesn't interfere with mobile sticky header */
+    .fd-category-grid {
+        display: none; /* Usually hidden on mobile in favor of the drawer */
+    }
+}
 </style>
 
 <div class="fd-main-wrapper">
@@ -353,7 +448,7 @@ jQuery(document).ready(function($){
         let list = $('#vmodal-options-list').empty();
         variants.forEach((v, idx) => {
             list.append(`
-                <div class="fd-v-row ${idx === 0 ? 'selected' : ''}" data-vname="${v.name}" data-vprice="${v.price}">
+                <div class="fd-v-row" data-vname="${v.name}" data-vprice="${v.price}">
                     <div class="fd-v-info">
                         <span class="fd-v-name">${v.name}</span>
                         <span class="fd-v-price">+${config.currency}${parseFloat(v.price).toFixed(2)}</span>

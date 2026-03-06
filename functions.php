@@ -258,15 +258,13 @@ add_action('admin_menu', function(){
 });
 
 /*--------------------------------------------------------------
-# 1. Database Table Creation (Updated for Split Notes)
+# 1. Database Table Creation
 --------------------------------------------------------------*/
 function afd_create_orders_table() {
     global $wpdb;
     $table_name = $wpdb->prefix . 'afd_food_orders';
     $charset_collate = $wpdb->get_charset_collate();
 
-    // Added 'kitchen_notes' and renamed 'notes' to 'delivery_notes' conceptually
-    // Note: keeping 'notes' column but treating it as Delivery Notes for compatibility
     $sql = "CREATE TABLE $table_name (
         id bigint(20) NOT NULL AUTO_INCREMENT,
         display_id varchar(20) NOT NULL,
@@ -307,23 +305,24 @@ function afd_generate_unique_display_id() {
     global $wpdb;
     $table_name = $wpdb->prefix . 'afd_food_orders';
 
-    $today_date  = current_time('Y-m-d');
-    $date_prefix = current_time('Ymd');
+    $today_prefix = current_time('Y-m-d');
+    $date_string  = current_time('Ymd');
 
+    // Optimization: Using LIKE instead of DATE() function allows index usage
     $count_today = $wpdb->get_var(
         $wpdb->prepare(
-            "SELECT COUNT(id) FROM $table_name WHERE DATE(order_date) = %s",
-            $today_date
+            "SELECT COUNT(id) FROM $table_name WHERE order_date LIKE %s",
+            $wpdb->esc_like($today_prefix) . '%'
         )
     );
 
     $new_sequence = intval($count_today) + 1;
-    return $date_prefix . '-' . str_pad($new_sequence, 3, '0', STR_PAD_LEFT);
+    return $date_string . '-' . str_pad($new_sequence, 3, '0', STR_PAD_LEFT);
 }
 
 
 /*--------------------------------------------------------------
-# 3. Helper: Insert Custom Order (Updated for Split Notes)
+# 3. Helper: Insert Custom Order
 --------------------------------------------------------------*/
 function fd_insert_custom_order($data) {
     global $wpdb;
@@ -334,19 +333,19 @@ function fd_insert_custom_order($data) {
     $time_val   = isset($data['scheduledTime']) ? $data['scheduledTime'] : 'asap';
     $delay_msg  = isset($data['delayMessage']) ? $data['delayMessage'] : '';
     $status_val = ($time_val === 'asap') ? 'pending' : 'preorder';
+    $user_id    = isset($data['user_id']) ? intval($data['user_id']) : 0;
 
     $inserted = $wpdb->insert(
         $table_name,
         [
             'display_id'     => $permanent_id,
-            'customer_id'    => intval($data['user_id']),
+            'customer_id'    => $user_id,
             'order_type'     => sanitize_text_field($data['orderType']),
             'payment_method' => sanitize_text_field($data['paymentMethod']),
             'full_name'      => sanitize_text_field($data['fullName']),
             'email'          => sanitize_email($data['email']),
             'phone'          => sanitize_text_field($data['phone']),
             'address'        => sanitize_textarea_field($data['address']),
-            // Mapped from Checkout AJAX keys
             'kitchen_notes'  => sanitize_textarea_field($data['kitchen_notes']),
             'delivery_notes' => sanitize_textarea_field($data['delivery_notes']),
             'scheduled_time' => sanitize_text_field($time_val),
@@ -362,9 +361,7 @@ function fd_insert_custom_order($data) {
             'order_date'     => current_time('mysql')
         ],
         [
-            '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s', 
-            '%s', // kitchen_notes
-            '%s', // delivery_notes
+            '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s',
             '%s', '%s', '%s', '%f', '%f', '%f', '%f', '%f', '%f', '%s', '%s'
         ]
     );
@@ -374,6 +371,9 @@ function fd_insert_custom_order($data) {
 
 /*--------------------------------------------------------------
 # Main Page with LEFT Tabs + Right Content
+--------------------------------------------------------------*/
+/*--------------------------------------------------------------
+# Main Page with LEFT Tabs + Right Content + Text Toggle
 --------------------------------------------------------------*/
 function fd_main_page(){
 
@@ -385,47 +385,155 @@ function fd_main_page(){
         'extras'     => 'Extras',
         'reports'    => 'Reports',
         'customers'  => 'Customers',
-        'settings'   => 'Settings' // 1. Added to array
+        'settings'   => 'Settings'
     ];
 
     $active = $_GET['tab'] ?? 'orders';
+    $is_print = (isset($_GET['action']) && $_GET['action'] === 'print');
+
+    // Detect if sidebar should be hidden from cookie
+    $is_hidden = isset($_COOKIE['afd_sidebar_state']) && $_COOKIE['afd_sidebar_state'] === 'hidden';
+    $sidebar_class = $is_hidden ? 'afd-sidebar-hidden' : '';
     ?>
 
-    <div class="awesome-food-delivery <?php echo (isset($_GET['action']) && $_GET['action'] === 'print') ? 'afd-print' : ''; ?>">
-        <?php
-        // Only show sidebar if NOT a print page
-        if (!(isset($_GET['action']) && $_GET['action'] === 'print')) :
-        ?>
-        <ul class="afd-left-tabs">
-            <li><a class="<?php echo ($active === 'dashboard') ? 'active' : ''; ?>" href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=dashboard'); ?>">Dashboard</a></li>
-            <li><a class="<?php echo ($active === 'orders') ? 'active' : ''; ?>" href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=orders'); ?>">Orders</a></li>
-            <li><a class="<?php echo ($active === 'items') ? 'active' : ''; ?>" href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=items'); ?>">Items</a></li>
-            <li><a class="<?php echo ($active === 'categories') ? 'active' : ''; ?>" href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=categories'); ?>">Categories</a></li>
-            <!-- <li><a class="<?php //echo ($active === 'extras') ? 'active' : ''; ?>" href="<?php //echo admin_url('admin.php?page=awesome_food_delivery&tab=extras'); ?>">Extras</a></li> -->
-            <li><a class="<?php echo ($active === 'reports') ? 'active' : ''; ?>" href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=reports'); ?>">Reports</a></li>
-            <li><a class="<?php echo ($active === 'customers') ? 'active' : ''; ?>" href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=customers'); ?>">Customers</a></li>
-            <li><a class="<?php echo ($active === 'settings') ? 'active' : ''; ?>" href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=settings'); ?>">Settings</a></li>
-        </ul>
+    <div id="afd-wrapper" class="awesome-food-delivery <?php echo $is_print ? 'afd-print' : $sidebar_class; ?>">
+        
+        <?php if (!$is_print) : ?>
+            <button type="button" id="afd-toggle-sidebar" class="afd-text-toggle">
+                <?php echo $is_hidden ? 'Show Menu' : 'Hide Menu'; ?>
+            </button>
+
+            <ul class="afd-left-tabs">
+                <?php foreach ($tabs as $slug => $label) : 
+                    if ($slug === 'extras') continue; // Matches your original commented out logic
+                ?>
+                    <li>
+                        <a class="<?php echo ($active === $slug) ? 'active' : ''; ?>" 
+                           href="<?php echo admin_url('admin.php?page=awesome_food_delivery&tab=' . $slug); ?>">
+                            <?php echo $label; ?>
+                        </a>
+                    </li>
+                <?php endforeach; ?>
+            </ul>
         <?php endif; ?>
 
-            <div class="afd-right-box">
-                <?php
-                switch($active){
-                    case 'dashboard':  fd_dashboard_tab(); break;
-                    case 'orders':     fd_orders_tab(); break;
-                    case 'items':      fd_items_tab(); break;
-                    case 'categories': fd_category_tab(); break;
-                    //case 'extras':     fd_extras_tab(); break;
-                    case 'reports':    fd_reports_tab(); break;
-                    case 'customers':  fd_customers_tab(); break;
-                    case 'settings':   fd_settings_tab(); break;
-                }
-                ?>
-            </div>
+        <div class="afd-right-box">
+            <?php
+            switch($active){
+                case 'dashboard':  fd_dashboard_tab(); break;
+                case 'orders':     fd_orders_tab(); break;
+                case 'items':      fd_items_tab(); break;
+                case 'categories': fd_category_tab(); break;
+                case 'reports':    fd_reports_tab(); break;
+                case 'customers':  fd_customers_tab(); break;
+                case 'settings':   fd_settings_tab(); break;
+            }
+            ?>
+        </div>
     </div>
 
+    <script>
+    jQuery(document).ready(function($) {
+        $('#afd-toggle-sidebar').on('click', function() {
+            const wrapper = $('#afd-wrapper');
+            const btn = $(this);
+            
+            wrapper.toggleClass('afd-sidebar-hidden');
+            
+            // Toggle the Text
+            if(wrapper.hasClass('afd-sidebar-hidden')) {
+                btn.text('Show Menu');
+                document.cookie = "afd_sidebar_state=hidden;path=/;max-age=" + (60*60*24*30);
+            } else {
+                btn.text('Hide Menu');
+                document.cookie = "afd_sidebar_state=visible;path=/;max-age=" + (60*60*24*30);
+            }
+        });
+    });
+    </script>
     <?php
 }
+?>
+
+<style>
+/* Layout Container */
+.awesome-food-delivery {
+    display: flex;
+    position: relative;
+    transition: all 0.3s ease;
+    min-height: 100vh;
+}
+
+/* Sidebar */
+.afd-left-tabs {
+    width: 200px;
+    margin: 0;
+    padding: 60px 0 0 0;
+    list-style: none;
+    transition: all 0.3s ease;
+    flex-shrink: 0;
+}
+
+.afd-left-tabs li a {
+    display: block;
+    padding: 12px 20px;
+    color: #eee;
+    text-decoration: none;
+}
+
+.afd-left-tabs li a.active {
+    background: #0073aa;
+    color: #fff;
+}
+
+/* Right Content Box */
+.afd-right-box {
+    flex-grow: 1;
+    transition: all 0.3s ease;
+    background: #fff;
+    padding: 40px 20px 20px 20px; /* Top padding to clear the button */
+}
+
+/* Text Toggle Styling */
+.afd-text-toggle {
+    position: absolute;
+    left: 10px;
+    top: 10px;
+    z-index: 999;
+    cursor: pointer;
+    background: #f1f1f1;
+    border: 1px solid #ccc;
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    border-radius: 3px;
+    color: #444;
+}
+
+.afd-text-toggle:hover {
+    background: #e5e5e5;
+    color: #000;
+}
+
+/* HIDDEN STATE */
+.afd-sidebar-hidden .afd-left-tabs {
+    margin-left: -200px;
+    opacity: 0;
+    visibility: hidden;
+}
+
+.afd-sidebar-hidden .afd-right-box {
+    width: 100%;
+}
+
+/* Print Page Fix */
+.afd-print .afd-left-tabs, 
+.afd-print #afd-toggle-sidebar {
+    display: none !important;
+}
+</style>
+<?php
 
 require_once get_template_directory() . '/inc/dashboard.php';
 require_once get_template_directory() . '/inc/orders.php';

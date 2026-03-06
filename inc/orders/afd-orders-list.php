@@ -1,7 +1,7 @@
 <?php
 /**
  * AWESOME FOOD DELIVERY - ULTIMATE MASTER DASHBOARD
- * Features: Accept Order triggers New Tab Print, Status Filters, & Date Search
+ * Features: Accept Order triggers New Tab Print, Status Filters, & Date Range Search
  */
 
 if (!defined('ABSPATH')) exit;
@@ -10,26 +10,22 @@ global $wpdb;
 $table_name = $wpdb->prefix . 'afd_food_orders';
 
 // --- 0. PRINT BRIDGE HANDLER ---
-// Direct handler for: ?page=awesome_food_delivery&tab=orders&order_id=X&action=print&type=kitchen
 if (isset($_GET['action']) && $_GET['action'] === 'print' && isset($_GET['order_id'])) {
     if (isset($_GET['type']) && $_GET['type'] === 'kitchen') {
         $print_file = plugin_dir_path(__FILE__) . 'admin/afd-orders-print-kitchen.php';
         if (file_exists($print_file)) {
             include($print_file);
-            exit; // Stop WP Admin from loading on the receipt
+            exit;
         }
     }
 }
 
 // --- 1. ACTION HANDLERS ---
-
-// UPDATE STATUS HANDLER
 if (isset($_GET['action']) && $_GET['action'] === 'update_status' && isset($_GET['order_id']) && isset($_GET['new_status'])) {
     $order_id = intval($_GET['order_id']);
     $new_status = sanitize_text_field($_GET['new_status']);
     $update_data = ['order_status' => $new_status];
     
-    // Set timestamp when moved to Kitchen
     if ($new_status === 'cooking') { 
         $update_data['order_date'] = current_time('mysql'); 
     }
@@ -37,7 +33,6 @@ if (isset($_GET['action']) && $_GET['action'] === 'update_status' && isset($_GET
     $wpdb->update($table_name, $update_data, ['id' => $order_id]);
     
     $redirect_url = 'admin.php?page=awesome_food_delivery&tab=orders';
-    // Append autoprint trigger for JavaScript
     if ($new_status === 'cooking') {
         $redirect_url .= '&autoprint=' . $order_id;
     }
@@ -46,7 +41,6 @@ if (isset($_GET['action']) && $_GET['action'] === 'update_status' && isset($_GET
     exit;
 }
 
-// SAVE EDITED ORDER
 if (isset($_POST['afd_save_order'])) {
     $order_id = intval($_POST['order_id']);
     $old_order = $wpdb->get_row($wpdb->prepare("SELECT scheduled_time, order_date FROM $table_name WHERE id = %d", $order_id));
@@ -110,9 +104,9 @@ $alarm_trigger_count = 0;
     :root { --clr-preorder: #8b5cf6; --clr-pending: #d63638; --clr-cooking: #f59e0b; --clr-rider: #3b82f6; --clr-completed: #46b450; }
     .afd-dashboard { margin-top: 20px; }
     #afd-alarm-unlock { background: #fffbeb; border: 1px solid #fef3c7; padding: 15px; margin-bottom: 20px; border-radius: 8px; text-align: center; cursor: pointer; font-weight: bold; color: #92400e; display: flex; align-items: center; justify-content: center; gap: 10px; }
-    #afon-orders-table { width: 100%; background: #fff; border: 1px solid #ccd0d4; border-radius: 8px; border-collapse: collapse; }
+    #afon-orders-table { width: 100% !important; background: #fff; border: 1px solid #ccd0d4; border-radius: 8px; border-collapse: collapse; }
     #afon-orders-table th { background: #f9f9f9; padding: 12px; border-bottom: 2px solid #ccd0d4; text-align: left; font-size: 11px; text-transform: uppercase; color: #666; }
-    #afon-orders-table td { padding: 12px; border-bottom: 1px solid #f0f0f1; vertical-align: middle; }
+    #afon-orders-table td { padding: 12px; border-bottom: 1px solid #f0f0f1; vertical-align: middle; font-size: 20px;}
     .st-badge { padding: 4px 10px; border-radius: 20px; font-size: 10px; font-weight: 800; color: #fff; text-transform: uppercase; }
     .status-preorder { background: var(--clr-preorder); }
     .status-pending { background: var(--clr-pending); animation: afd-pulse 2s infinite; }
@@ -121,10 +115,13 @@ $alarm_trigger_count = 0;
     .status-completed { background: var(--clr-completed); }
     .timer-box { font-family: monospace; font-weight: 700; color: #c45100; background: #fff8e5; padding: 4px 8px; border: 1px solid #ffb900; border-radius: 4px; display: inline-flex; align-items: center; gap: 5px; }
     .timer-late { background: #fcf0f1; color: #d63638; border-color: #d63638; animation: afd-pulse 1s infinite; }
-    .afd-filter-bar { display: flex; gap: 15px; margin-bottom: 20px; align-items: center; background:#fff; padding:15px; border:1px solid #ccd0d4; border-radius:8px; }
+    .afd-filter-bar { display: flex; gap: 15px; margin-bottom: 20px; align-items: center; background:#fff; padding:15px; border:1px solid #ccd0d4; border-radius:8px; flex-wrap: wrap; }
     .afd-filter-bar select, .afd-filter-bar input { padding: 5px 10px; border-radius: 4px; border: 1px solid #ccc; height: 35px; }
-    .fd-action-btn { text-decoration: none; padding: 5px 8px; border: 1px solid #ccc; border-radius: 4px; color: #333; font-size: 11px; font-weight: bold; background: #fff; display: inline-flex; align-items: center; gap: 4px; }
+    .fd-action-btn { text-decoration: none; padding: 5px 8px; border: 1px solid #ccc; border-radius: 4px; color: #333; font-size: 18px; font-weight: bold; background: #fff; display: inline-flex; align-items: center; gap: 4px; }
     @keyframes afd-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+    
+    /* Ensure the date column is hidden but available for DataTables */
+    .afd-hidden-date { display: none !important; }
 </style>
 
 <div class="wrap afd-dashboard">
@@ -135,7 +132,7 @@ $alarm_trigger_count = 0;
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
         <h1 style="font-weight: 900;">Order Master Dashboard</h1>
         <div style="background: #fff; padding: 5px 15px; border-radius: 20px; border: 1px solid #ccc; font-weight: bold;">
-            Auto-Refresh: <span id="timer-count" style="color:red;">30</span>s
+            Auto-Refresh: <span id="timer-count" style="color:red;">60</span>s
         </div>
     </div>
 
@@ -151,9 +148,11 @@ $alarm_trigger_count = 0;
                 <option value="completed">Done (Completed)</option>
             </select>
         </div>
-        <div id="date-filter-wrap" style="display: none;">
-            <strong>Filter Date:</strong>
-            <input type="date" id="date-search" value="<?php echo date('Y-m-d'); ?>">
+        <div id="date-filter-wrap" style="display: flex; gap: 10px; align-items: center;">
+            <strong>Date From:</strong>
+            <input type="date" id="date-from" value="<?php echo date('Y-m-d'); ?>">
+            <strong>End Date:</strong>
+            <input type="date" id="date-to" value="<?php echo date('Y-m-d'); ?>">
         </div>
     </div>
 
@@ -164,7 +163,7 @@ $alarm_trigger_count = 0;
                 <th>Customer</th>
                 <th width="100">Status</th>
                 <th width="130">Kitchen Timer</th>
-                <th width="100" class="hidden-date-col" style="display:none;">Date</th> <th style="text-align: right;">Actions</th>
+                <th class="afd-hidden-date">Date</th> <th style="text-align: right;">Actions</th>
             </tr>
         </thead>
         <tbody>
@@ -192,7 +191,7 @@ $alarm_trigger_count = 0;
                         </div>
                     <?php else: ?>--:--<?php endif; ?>
                 </td>
-                <td class="hidden-date-col" style="display:none;"><?php echo $order->date_only; ?></td>
+                <td class="afd-hidden-date"><?php echo $order->date_only; ?></td>
                 <td align="right">
                     <div style="display: flex; gap: 5px; justify-content: flex-end;">
                         <?php if ($st === 'pending' || $st === 'preorder') : ?>
@@ -216,30 +215,46 @@ $alarm_trigger_count = 0;
 <script>
 jQuery(document).ready(function($){
     // 1. DataTable Initialization
-    var table = $('#afon-orders-table').DataTable({ "order": [[0, "desc"]], "pageLength": 100, "dom": 'lfrtip' });
+    var table = $('#afon-orders-table').DataTable({ 
+        "order": [[0, "desc"]], 
+        "pageLength": 100, 
+        "dom": 'lfrtip' 
+    });
 
-    // 2. Filter System
+    // 2. Custom Date Range Filtering for DataTable (Global)
+    $.fn.dataTable.ext.search.push(
+        function(settings, data, dataIndex) {
+            var min = $('#date-from').val();
+            var max = $('#date-to').val();
+            var dateVal = data[4]; // The 'Date' column index
+
+            if (
+                (min === "" && max === "") ||
+                (min === "" && dateVal <= max) ||
+                (min <= dateVal && max === "") ||
+                (min <= dateVal && dateVal <= max)
+            ) {
+                return true;
+            }
+            return false;
+        }
+    );
+
+    // Filter Logic Triggers
     $('#status-dropdown').on('change', function(){
-        var val = $(this).val();
-        table.column(2).search(val).draw();
-        if(val === 'completed') { $('#date-filter-wrap').fadeIn(); table.column(4).search($('#date-search').val()).draw(); } 
-        else { $('#date-filter-wrap').fadeOut(); table.column(4).search('').draw(); }
+        table.column(2).search($(this).val()).draw();
     });
 
-    $('#date-search').on('change', function(){
-        if($('#status-dropdown').val() === 'completed') { table.column(4).search($(this).val()).draw(); }
+    $('#date-from, #date-to').on('change', function(){
+        table.draw();
     });
 
-    // 3. AUTO-PRINT LOGIC: OPEN NEW TAB ON ACCEPT
+    // 3. AUTO-PRINT LOGIC
     const urlParams = new URLSearchParams(window.location.search);
     const autoPrintID = urlParams.get('autoprint');
     if (autoPrintID) {
         const printUrl = "admin.php?page=awesome_food_delivery&tab=orders&order_id=" + autoPrintID + "&action=print&type=kitchen";
-        
-        // Triggers pop-up exactly like clicking the Receipt button
         window.open(printUrl, '_blank');
-        
-        // Clean address bar without refreshing
         const cleanUrl = window.location.href.split('&autoprint=')[0];
         window.history.replaceState({}, document.title, cleanUrl);
     }
@@ -274,7 +289,11 @@ jQuery(document).ready(function($){
     });
 
     // 6. Global Auto-Refresh (30s)
-    var refresh = 30;
-    setInterval(function(){ refresh--; $('#timer-count').text(refresh); if(refresh <= 0) location.reload(); }, 1000);
+    var refresh = 60;
+    setInterval(function(){ 
+        refresh--; 
+        $('#timer-count').text(refresh); 
+        if(refresh <= 0) location.reload(); 
+    }, 1000);
 });
 </script>
