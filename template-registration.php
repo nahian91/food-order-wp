@@ -17,7 +17,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['fd_register_nonce'])) 
         $email      = sanitize_email($_POST['email']);
         $password   = $_POST['password'];
         $full_name  = sanitize_text_field($_POST['full_name']);
-        $phone      = sanitize_text_field($_POST['phone']);
+        
+        // UK Phone Validation Logic
+        $phone_raw  = sanitize_text_field($_POST['phone']);
+        $phone      = preg_replace('/[^0-9]/', '', $phone_raw); // Remove non-digits
         
         // New Address Fields
         $flat_no    = sanitize_text_field($_POST['flat_no']);
@@ -32,7 +35,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['fd_register_nonce'])) 
         if (!is_email($email)) $errors[] = "Please enter a valid email.";
         if (email_exists($email)) $errors[] = "This email is already registered.";
         if (strlen($password) < 6) $errors[] = "Password must be at least 6 characters.";
-        if (empty($phone)) $errors[] = "Phone number is required for delivery.";
+        
+        // Phone Validation (UK Format)
+        if (empty($phone)) {
+            $errors[] = "Phone number is required.";
+        } elseif (strlen($phone) !== 11) {
+            $errors[] = "UK Phone number must be exactly 11 digits.";
+        } elseif (substr($phone, 0, 1) !== '0') {
+            $errors[] = "UK Phone number must start with 0.";
+        }
+
         if (empty($postcode)) $errors[] = "Postcode is required.";
 
         if (empty($errors)) {
@@ -50,7 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['fd_register_nonce'])) 
                 update_user_meta($user_id, 'billing_phone', $phone);
                 update_user_meta($user_id, 'billing_postcode', $postcode);
                 
-                // Concatenate detailed address for standard "Address 1" field
+                // Concatenate detailed address
                 $full_address_string = "Flat $flat_no, $building, Door $door_no, $road_name. $address_gen";
                 update_user_meta($user_id, 'billing_address_1', $full_address_string);
                 
@@ -97,17 +109,17 @@ get_header(); ?>
                 <div class="reg-card">
                     <div class="row g-0">
                         <div class="col-md-4 reg-info-side d-none d-md-flex">
-                            <h3 class="text-white">Welcome!</h3>
-                            <p class="text-white">Create an account to track your delicious orders and get faster delivery.</p>
+                            <h3 class="text-white">Join Us!</h3>
+                            <p class="text-white">Get your UK food delivery faster by saving your details with us.</p>
                             <ul class="mt-4 list-unstyled">
-                                <li class="mb-2"><i class="fas fa-check-circle me-2"></i> Save Multiple Addresses</li>
-                                <li class="mb-2"><i class="fas fa-check-circle me-2"></i> One-click Ordering</li>
-                                <li class="mb-2"><i class="fas fa-check-circle me-2"></i> Exclusive Discounts</li>
+                                <li class="mb-2"><i class="fas fa-check-circle me-2"></i> Standard 11-digit UK Security</li>
+                                <li class="mb-2"><i class="fas fa-check-circle me-2"></i> Postcode Validated Delivery</li>
+                                <li class="mb-2"><i class="fas fa-check-circle me-2"></i> Door-to-Door Tracking</li>
                             </ul>
                         </div>
                         
                         <div class="col-md-8 reg-form-side">
-                            <h2 class="mb-4" style="font-weight: 800;">Register</h2>
+                            <h2 class="mb-4" style="font-weight: 800;">Register Account</h2>
                             
                             <?php if (!empty($errors)): ?>
                                 <div class="alert alert-danger mb-4" style="border-left: 4px solid #d63638; background: #fff5f5;">
@@ -121,11 +133,20 @@ get_header(); ?>
                                 <div class="row">
                                     <div class="col-md-6 mb-3">
                                         <label class="form-label">Full Name</label>
-                                        <input type="text" name="full_name" class="form-control" placeholder="John Doe" required>
+                                        <input type="text" name="full_name" class="form-control" placeholder="e.g. John Smith" required>
                                     </div>
                                     <div class="col-md-6 mb-3">
                                         <label class="form-label">Phone Number</label>
-                                        <input type="tel" name="phone" class="form-control" placeholder="+1 234 567 890" required>
+                                        <input 
+                                            type="tel" 
+                                            name="phone" 
+                                            class="form-control" 
+                                            placeholder="07123456789" 
+                                            maxlength="11"
+                                            pattern="^0[0-9]{10}$"
+                                            oninput="this.value = this.value.replace(/[^0-9]/g, '');"
+                                            required
+                                        >
                                     </div>
                                 </div>
 
@@ -141,41 +162,41 @@ get_header(); ?>
                                 </div>
 
                                 <hr class="my-4">
-                                <h6 class="mb-3">Delivery Details</h6>
+                                <h6 class="mb-3">Delivery Address</h6>
 
                                 <div class="row">
                                     <div class="col-md-4 mb-3">
                                         <label class="form-label">Flat No.</label>
-                                        <input type="text" name="flat_no" class="form-control" placeholder="e.g. 4B">
+                                        <input type="text" name="flat_no" class="form-control" placeholder="4B" required>
                                     </div>
                                     <div class="col-md-4 mb-3">
                                         <label class="form-label">Building Name</label>
-                                        <input type="text" name="building" class="form-control" placeholder="e.g. Sunset Heights">
+                                        <input type="text" name="building" class="form-control" placeholder="Skyline Tower" required>
                                     </div>
                                     <div class="col-md-4 mb-3">
                                         <label class="form-label">Door / House No.</label>
-                                        <input type="text" name="door_no" class="form-control" placeholder="e.g. 102" required>
+                                        <input type="text" name="door_no" class="form-control" placeholder="10" required>
                                     </div>
                                 </div>
 
                                 <div class="row">
                                     <div class="col-md-8 mb-3">
                                         <label class="form-label">Road Name</label>
-                                        <input type="text" name="road_name" class="form-control" placeholder="e.g. Baker Street" required>
+                                        <input type="text" name="road_name" class="form-control" placeholder="High Street" required>
                                     </div>
                                     <div class="col-md-4 mb-3">
-                                        <label class="form-label">Postcode</label>
-                                        <input type="text" name="postcode" class="form-control" placeholder="NW1 6XE" required>
+                                        <label class="form-label">UK Postcode</label>
+                                        <input type="text" name="postcode" class="form-control" placeholder="SW1A 1AA" required>
                                     </div>
                                 </div>
 
                                 <div class="mb-3">
-                                    <label class="form-label">Additional Address Info</label>
-                                    <textarea name="address" class="form-control" rows="2" placeholder="Nearby landmarks or special instructions..."></textarea>
+                                    <label class="form-label">Delivery Instructions</label>
+                                    <textarea name="address" class="form-control" rows="2" placeholder="e.g. Leave by the red gate..."></textarea>
                                 </div>
 
                                 <div class="mb-3">
-                                    <label class="form-label">Choose Password</label>
+                                    <label class="form-label">Password</label>
                                     <input type="password" name="password" class="form-control" placeholder="••••••••" required>
                                 </div>
 

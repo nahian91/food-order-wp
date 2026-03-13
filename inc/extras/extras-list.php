@@ -56,7 +56,7 @@ function fd_all_extras_tab(){
 
                         <td>
                             <span class="afon-price-text">
-                                <?php echo isset($afon_item['price']) ? number_format($afon_item['price'], 2, '.', '') . ' €' : '0.00 €'; ?>
+                                <?php echo isset($afon_item['price']) ? number_format($afon_item['price'], 2, '.', '') . ' £' : '0.00 £'; ?>
                             </span>
                         </td>
 

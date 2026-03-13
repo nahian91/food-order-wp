@@ -6,7 +6,7 @@ jQuery(document).ready(function($) {
     let cart = JSON.parse(localStorage.getItem('fd_cart_save')) || [];
     
     const config = {
-        deliveryFee: parseFloat(fd_vars.delivery_fee) || 0,
+        deliveryFee: parseFloat(fd_vars.delivery_charge) || 0,
         collectionFee: parseFloat(fd_vars.collection_fee) || 0,
         serviceFee: parseFloat(fd_vars.service_fee) || 0,
         bagFee: parseFloat(fd_vars.bag_fee) || 0,

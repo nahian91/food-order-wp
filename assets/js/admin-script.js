@@ -75,7 +75,7 @@ jQuery(document).ready(function($) {
 
     $('input[name="afon_extra_price"]').on('input', function() {
         var price = parseFloat($(this).val() || 0).toFixed(2);
-        $('#afon-live-price').text(price + ' €');
+        $('#afon-live-price').text(price + ' £');
     });
 
     $('input[name="afon_extra_qty"]').on('input', function() {

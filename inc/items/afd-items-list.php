@@ -154,7 +154,7 @@ function fd_items_list() {
                             <span class="fd-slider"></span>
                         </label>
                     </td>
-                    <td><strong style="font-size:16px; color: var(--res-primary);"><?php echo number_format((float)$price, 2); ?> €</strong></td>
+                    <td><strong style="font-size:16px; color: var(--res-primary);"><?php echo number_format((float)$price, 2); ?> £</strong></td>
                     <td align="right">
                         <div style="display: flex; gap: 5px; justify-content: flex-end;">
                             <a class="fd-btn" href="?page=awesome_food_delivery&tab=items&sub=edit&item=<?php echo $item->ID; ?>">

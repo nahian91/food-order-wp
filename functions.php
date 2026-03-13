@@ -258,13 +258,16 @@ add_action('admin_menu', function(){
 });
 
 /*--------------------------------------------------------------
-# 1. Database Table Creation
+# 1. Database Table Creation (dbDelta Compliant)
 --------------------------------------------------------------*/
 function afd_create_orders_table() {
     global $wpdb;
     $table_name = $wpdb->prefix . 'afd_food_orders';
     $charset_collate = $wpdb->get_charset_collate();
 
+    // dbDelta requirements: 
+    // - Every column on a new line
+    // - Two spaces after PRIMARY KEY
     $sql = "CREATE TABLE $table_name (
         id bigint(20) NOT NULL AUTO_INCREMENT,
         display_id varchar(20) NOT NULL,
@@ -274,6 +277,11 @@ function afd_create_orders_table() {
         full_name varchar(255) DEFAULT '' NOT NULL,
         email varchar(255) DEFAULT '' NOT NULL,
         phone varchar(50) DEFAULT '' NOT NULL,
+        flat_no varchar(100) DEFAULT '' NOT NULL,
+        door_no varchar(100) DEFAULT '' NOT NULL,
+        building_name varchar(255) DEFAULT '' NOT NULL,
+        road_name varchar(255) DEFAULT '' NOT NULL,
+        postcode varchar(20) DEFAULT '' NOT NULL,
         address text NOT NULL,
         kitchen_notes text NOT NULL,
         delivery_notes text NOT NULL,
@@ -281,14 +289,18 @@ function afd_create_orders_table() {
         delay_message text NOT NULL,
         items_json longtext NOT NULL,
         subtotal decimal(10,2) DEFAULT '0.00' NOT NULL,
+        total_price decimal(10,2) DEFAULT '0.00' NOT NULL,
+        order_status varchar(20) DEFAULT 'pending' NOT NULL,
+        payment_status varchar(20) DEFAULT 'Unpaid' NOT NULL,
+        order_date datetime DEFAULT '0000-00-00 00:00:00' NOT NULL,
         service_fee decimal(10,2) DEFAULT '0.00' NOT NULL,
         bag_fee decimal(10,2) DEFAULT '0.00' NOT NULL,
         tip_amount decimal(10,2) DEFAULT '0.00' NOT NULL,
-        delivery_fee decimal(10,2) DEFAULT '0.00' NOT NULL,
-        total_price decimal(10,2) DEFAULT '0.00' NOT NULL,
-        order_status varchar(20) DEFAULT 'pending' NOT NULL,
-        order_date datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
-        PRIMARY KEY (id),
+        delivery_charge decimal(10,2) DEFAULT '0.00' NOT NULL,
+        collection_charge decimal(10,2) DEFAULT '0.00' NOT NULL,
+        delivery_discount decimal(10,2) DEFAULT '0.00' NOT NULL,
+        collection_discount decimal(10,2) DEFAULT '0.00' NOT NULL,
+        PRIMARY KEY  (id),
         UNIQUE KEY display_id (display_id)
     ) $charset_collate;";
 
@@ -297,76 +309,94 @@ function afd_create_orders_table() {
 }
 add_action('admin_init', 'afd_create_orders_table');
 
-
 /*--------------------------------------------------------------
-# 2. Helper: Generate Next Sequential Display ID
---------------------------------------------------------------*/
-function afd_generate_unique_display_id() {
-    global $wpdb;
-    $table_name = $wpdb->prefix . 'afd_food_orders';
-
-    $today_prefix = current_time('Y-m-d');
-    $date_string  = current_time('Ymd');
-
-    // Optimization: Using LIKE instead of DATE() function allows index usage
-    $count_today = $wpdb->get_var(
-        $wpdb->prepare(
-            "SELECT COUNT(id) FROM $table_name WHERE order_date LIKE %s",
-            $wpdb->esc_like($today_prefix) . '%'
-        )
-    );
-
-    $new_sequence = intval($count_today) + 1;
-    return $date_string . '-' . str_pad($new_sequence, 3, '0', STR_PAD_LEFT);
-}
-
-
-/*--------------------------------------------------------------
-# 3. Helper: Insert Custom Order
+# 2. Core Logic: Insert Custom Order
 --------------------------------------------------------------*/
 function fd_insert_custom_order($data) {
     global $wpdb;
     $table_name = $wpdb->prefix . 'afd_food_orders';
 
-    $permanent_id = afd_generate_unique_display_id();
-
-    $time_val   = isset($data['scheduledTime']) ? $data['scheduledTime'] : 'asap';
-    $delay_msg  = isset($data['delayMessage']) ? $data['delayMessage'] : '';
+    // Generate Display ID (Ensure afd_generate_unique_display_id exists in your theme/plugin)
+    $permanent_id = function_exists('afd_generate_unique_display_id') ? afd_generate_unique_display_id() : date('Ymd') . '-' . rand(100, 999);
+    
+    $time_val   = !empty($data['scheduledTime']) ? $data['scheduledTime'] : 'asap';
     $status_val = ($time_val === 'asap') ? 'pending' : 'preorder';
-    $user_id    = isset($data['user_id']) ? intval($data['user_id']) : 0;
 
-    $inserted = $wpdb->insert(
-        $table_name,
-        [
-            'display_id'     => $permanent_id,
-            'customer_id'    => $user_id,
-            'order_type'     => sanitize_text_field($data['orderType']),
-            'payment_method' => sanitize_text_field($data['paymentMethod']),
-            'full_name'      => sanitize_text_field($data['fullName']),
-            'email'          => sanitize_email($data['email']),
-            'phone'          => sanitize_text_field($data['phone']),
-            'address'        => sanitize_textarea_field($data['address']),
-            'kitchen_notes'  => sanitize_textarea_field($data['kitchen_notes']),
-            'delivery_notes' => sanitize_textarea_field($data['delivery_notes']),
-            'scheduled_time' => sanitize_text_field($time_val),
-            'delay_message'  => sanitize_textarea_field($delay_msg),
-            'items_json'     => wp_json_encode($data['cart']),
-            'subtotal'       => floatval($data['subtotal']),
-            'service_fee'    => floatval($data['service_fee']),
-            'bag_fee'        => floatval($data['bag_fee']),
-            'tip_amount'     => floatval($data['tip']),
-            'delivery_fee'   => floatval($data['delivery']),
-            'total_price'    => floatval($data['total']),
-            'order_status'   => $status_val,
-            'order_date'     => current_time('mysql')
-        ],
-        [
-            '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s',
-            '%s', '%s', '%s', '%f', '%f', '%f', '%f', '%f', '%f', '%s', '%s'
-        ]
-    );
+    // Process the Cart (Capturing Modal Variants)
+    $processed_cart = [];
+    if (!empty($data['cart']) && is_array($data['cart'])) {
+        foreach ($data['cart'] as $item) {
+            $processed_cart[] = [
+                'name'   => sanitize_text_field($item['name']),
+                'price'  => floatval($item['price']),
+                'qty'    => intval($item['qty']),
+                'vName'  => sanitize_text_field($item['vName'] ?? ''),
+                'vPrice' => floatval($item['vPrice'] ?? 0),
+            ];
+        }
+    }
 
-    return $inserted ? $permanent_id : false;
+    // Mapping Incoming Data to Database Columns
+    $insert_data = [
+        'display_id'          => $permanent_id,
+        'customer_id'         => get_current_user_id() ?: 0,
+        'order_type'          => sanitize_text_field($data['orderType'] ?? 'delivery'),
+        'payment_method'      => sanitize_text_field($data['paymentMethod'] ?? 'cash'),
+        'full_name'           => sanitize_text_field($data['fullName'] ?? ''),
+        'email'               => sanitize_email($data['email'] ?? ''),
+        'phone'               => sanitize_text_field($data['phone'] ?? ''),
+        'flat_no'             => sanitize_text_field($data['flat_no'] ?? ''),
+        'door_no'             => sanitize_text_field($data['door_no'] ?? ''),
+        'building_name'       => sanitize_text_field($data['building'] ?? ''), 
+        'road_name'           => sanitize_text_field($data['road_name'] ?? ''),
+        'postcode'            => strtoupper(sanitize_text_field($data['postcode'] ?? '')),
+        'kitchen_notes'       => sanitize_textarea_field($data['kitchen_notes'] ?? ''),
+        'delivery_notes'      => sanitize_textarea_field($data['delivery_notes'] ?? ''),
+        'scheduled_time'      => sanitize_text_field($time_val),
+        'items_json'          => wp_json_encode($processed_cart),
+        
+        // FINANCIAL MAPPING (Individual Columns for clean reporting)
+        'subtotal'            => floatval($data['subtotal'] ?? 0),
+        'service_fee'         => floatval($data['service_fee'] ?? 0),
+        'bag_fee'             => floatval($data['bag_fee'] ?? 0),
+        'tip_amount'          => floatval($data['tip'] ?? 0),
+        'delivery_charge'        => floatval($data['delivery_charge'] ?? 0),
+        'collection_charge'   => floatval($data['collection_charge'] ?? 0),
+        'delivery_discount'   => floatval($data['delivery_discount'] ?? 0),
+        'collection_discount' => floatval($data['collection_discount'] ?? 0),
+        'total_price'         => floatval($data['total'] ?? 0),
+        
+        'order_status'        => $status_val,
+        'payment_status'      => 'Unpaid',
+        'order_date'          => current_time('mysql')
+    ];
+
+    $result = $wpdb->insert($table_name, $insert_data);
+
+    if ($result === false) {
+        error_log("AFD DB Error: " . $wpdb->last_error);
+        return false;
+    }
+
+    return $permanent_id; 
+}
+
+/*--------------------------------------------------------------
+# 3. Helper: Generate Sequential Display ID
+--------------------------------------------------------------*/
+function afd_generate_unique_display_id() {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'afd_food_orders';
+    $date_string = current_time('Ymd');
+    $today_start = current_time('Y-m-d') . ' 00:00:00';
+
+    $count_today = $wpdb->get_var($wpdb->prepare(
+        "SELECT COUNT(id) FROM $table_name WHERE order_date >= %s",
+        $today_start
+    ));
+
+    $new_sequence = intval($count_today) + 1;
+    return $date_string . '-' . str_pad($new_sequence, 3, '0', STR_PAD_LEFT);
 }
 
 /*--------------------------------------------------------------

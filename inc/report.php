@@ -2,259 +2,227 @@
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 /**
- * Enterprise Reports - Restaurant Red Enterprise Analytics
- * VERSION: 3.0
- * * FEATURES:
- * - Real-time "Today" Pulse & Selected Period Analytics
- * - Global Date Range filtering via GET
- * - Peak Order Time (Hourly Intelligence)
- * - 5 Best Selling Items (Current vs Last 7 Days)
- * - 5 Best Categories (Current vs Last 7 Days)
- * - Print-Optimized Layout
+ * AWESOME FOOD DELIVERY - ENTERPRISE REPORTS v3.1
+ * Features: Live Analytics, Top Items & Categories, Order Management, Unified Alarms
  */
 function fd_reports_tab() {
-    // 1. INPUT FILTERS & CORE SETTINGS
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'afd_food_orders';
     $afon_currency = '£';
-    $filter_from   = isset($_GET['fd_from']) ? sanitize_text_field(wp_unslash($_GET['fd_from'])) : current_time('Y-m-d');
-    $filter_to     = isset($_GET['fd_to']) ? sanitize_text_field(wp_unslash($_GET['fd_to'])) : current_time('Y-m-d');
     
-    $today_str     = current_time('Y-m-d');
-    $seven_days_ag = date('Y-m-d', strtotime('-7 days'));
+    // --- 1. ACTION HANDLER: SAVE CHANGES ---
+    if (isset($_POST['afd_save_report_order'])) {
+        $order_id = intval($_POST['order_id']);
+        $wpdb->update($table_name, [
+            'full_name' => sanitize_text_field($_POST['full_name']),
+            'phone'     => sanitize_text_field($_POST['phone']),
+            'address'   => sanitize_textarea_field($_POST['address']),
+            'notes'     => sanitize_textarea_field($_POST['notes']),
+        ], ['id' => $order_id]);
+        echo "<div class='notice notice-success is-dismissible'><p>Order #$order_id updated successfully.</p></div>";
+    }
 
-    // 2. DATA QUERIES
-    // Query A: Orders within the selected filter range
-    $range_args = [
-        'post_type'   => 'food_order',
-        'numberposts' => -1,
-        'date_query'  => [
-            [
-                'after'     => $filter_from,
-                'before'    => $filter_to,
-                'inclusive' => true,
-            ],
-        ],
-    ];
-    $filtered_orders = get_posts($range_args);
+    // --- 2. VIEW HANDLER: EDIT ORDER ---
+    if (isset($_GET['action']) && $_GET['action'] === 'edit' && isset($_GET['order_id'])) {
+        $order = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", intval($_GET['order_id'])));
+        if ($order) { ?>
+            <div class="wrap afd-reports-wrap">
+                <h1 style="font-weight:900;">Edit Order #<?php echo $order->display_id; ?></h1>
+                <a href="admin.php?page=awesome_food_delivery&tab=reports" class="button" style="margin-bottom:20px;">← Back to Analytics</a>
+                <form method="post" action="" style="background:#fff; padding:30px; border-radius:15px; border:1px solid #ccd0d4; max-width:850px; box-shadow:0 4px 15px rgba(0,0,0,0.05);">
+                    <input type="hidden" name="order_id" value="<?php echo $order->id; ?>">
+                    <table class="form-table">
+                        <tr><th>Customer Name</th><td><input type="text" name="full_name" class="regular-text" value="<?php echo esc_attr($order->full_name); ?>"></td></tr>
+                        <tr><th>Phone Number</th><td><input type="text" name="phone" class="regular-text" value="<?php echo esc_attr($order->phone); ?>"></td></tr>
+                        <tr><th>Delivery Address</th><td><textarea name="address" rows="3" class="large-text"><?php echo esc_textarea($order->address); ?></textarea></td></tr>
+                        <tr><th>Kitchen Notes</th><td><textarea name="notes" rows="3" class="large-text"><?php echo esc_textarea($order->notes); ?></textarea></td></tr>
+                    </table>
+                    <div style="margin-top:20px;">
+                        <button type="submit" name="afd_save_report_order" class="button button-primary" style="height:45px; padding:0 35px; font-weight:bold; font-size:14px;">UPDATE ORDER DETAILS</button>
+                    </div>
+                </form>
+            </div>
+        <?php return; }
+    }
+
+    // --- 3. CORE ANALYTICS LOGIC ---
+    $filter_from = isset($_GET['fd_from']) ? sanitize_text_field($_GET['fd_from']) : current_time('Y-m-d');
+    $filter_to   = isset($_GET['fd_to']) ? sanitize_text_field($_GET['fd_to']) : current_time('Y-m-d');
     
-    // Query B: Orders from the last 7 days (for comparison)
-    $week_orders = get_posts([
-        'post_type'   => 'food_order', 
-        'numberposts' => -1, 
-        'date_query'  => [['after' => $seven_days_ag, 'inclusive' => true]]
-    ]);
+    // Notification Logic (Sync with Dashboard)
+    $alarm_trigger_count = $wpdb->get_var("SELECT COUNT(*) FROM $table_name WHERE order_status = 'pending' AND scheduled_time = 'asap'");
 
-    // 3. ANALYTICS ENGINE INITIALIZATION
+    // Range Data
+    $orders = $wpdb->get_results($wpdb->prepare(
+        "SELECT * FROM $table_name WHERE DATE(order_date) BETWEEN %s AND %s ORDER BY id DESC",
+        $filter_from, $filter_to
+    ));
+
     $stats = [
-        'range' => [
-            'count' => 0, 
-            'rev'   => 0, 
-            'items' => [], 
-            'cats'  => [], 
-            'hours' => array_fill(0, 24, 0)
-        ],
-        'week' => [
-            'items' => [], 
-            'cats'  => []
-        ]
+        'total_rev' => 0,
+        'count'     => 0,
+        'items'     => [],
+        'cats'      => [],
+        'hours'     => array_fill(0, 24, 0)
     ];
 
-    // 4. PROCESS FILTERED RANGE DATA
-    foreach ( $filtered_orders as $o ) {
-        $meta  = get_post_custom($o->ID);
-        $price = floatval($meta['total_price'][0] ?? 0);
-        
-        $stats['range']['count']++;
-        $stats['range']['rev'] += $price;
+    foreach ($orders as $o) {
+        $stats['count']++;
+        $stats['total_rev'] += (float)$o->total_price;
+        $hour = (int)date('H', strtotime($o->order_date));
+        $stats['hours'][$hour]++;
 
-        // Peak Time (Hour) Logic
-        $hour = (int) get_the_date('H', $o->ID);
-        $stats['range']['hours'][$hour]++;
-
-        // Item & Category Breakdown
-        $items_json = $meta['order_items'][0] ?? '[]';
-        $items_data = json_decode($items_json, true);
-        if ( is_array($items_data) ) {
-            foreach ( $items_data as $it ) {
-                $name = $it['name'] ?? 'Unknown Item';
+        $items = json_decode($o->items_json, true);
+        if (is_array($items)) {
+            foreach ($items as $it) {
+                $name = $it['name'] ?? 'Unknown';
                 $cat  = $it['category'] ?? 'General';
                 $qty  = intval($it['qty'] ?? 1);
                 
-                $stats['range']['items'][$name] = ( $stats['range']['items'][$name] ?? 0 ) + $qty;
-                $stats['range']['cats'][$cat]   = ( $stats['range']['cats'][$cat] ?? 0 ) + $qty;
+                $stats['items'][$name] = ($stats['items'][$name] ?? 0) + $qty;
+                $stats['cats'][$cat]   = ($stats['cats'][$cat] ?? 0) + $qty;
             }
         }
     }
+    arsort($stats['items']);
+    $top_sellers = array_slice($stats['items'], 0, 5, true);
+    
+    arsort($stats['cats']);
+    $top_categories = array_slice($stats['cats'], 0, 5, true);
 
-    // 5. PROCESS 7-DAY COMPARISON DATA
-    foreach ( $week_orders as $wo ) {
-        $items = json_decode(get_post_meta($wo->ID, 'order_items', true) ?: '[]', true);
-        if ( is_array($items) ) {
-            foreach ( $items as $it ) {
-                $name = $it['name'] ?? 'Unknown Item';
-                $cat  = $it['category'] ?? 'General';
-                $qty  = intval($it['qty'] ?? 1);
-                
-                $stats['week']['items'][$name] = ( $stats['week']['items'][$name] ?? 0 ) + $qty;
-                $stats['week']['cats'][$cat]   = ( $stats['week']['cats'][$cat] ?? 0 ) + $qty;
-            }
-        }
-    }
-
-    // Calculate Peak Hour
-    arsort($stats['range']['hours']);
-    $peak_hour = array_key_first($stats['range']['hours']);
-    $peak_time_formatted = date("g:00 A", strtotime("$peak_hour:00"));
-
-    // Sorting Helper for Top 5
-    $get_top_5 = function($arr) { 
-        arsort($arr); 
-        return array_slice($arr, 0, 5, true); 
-    };
+    arsort($stats['hours']);
+    $peak_hour = array_key_first($stats['hours']);
     ?>
 
     <style>
-        :root { --r-red: #d63638; --r-dark: #1e293b; --r-gray: #64748b; --r-bg: #f8fafc; --r-blue: #2563eb; }
-        .r-container { padding: 30px; background: var(--r-bg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, sans-serif; }
+        :root { --r-blue: #6366f1; --r-green: #22c55e; --r-bg: #f8fafc; --r-border: #e2e8f0; --r-purple: #a855f7; }
+        .afd-reports-wrap { padding: 25px; background: var(--r-bg); font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
         
-        /* Header & Print */
-        .r-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px; }
-        .r-header h1 { margin: 0; font-size: 28px; font-weight: 900; color: var(--r-dark); }
-        .r-print-btn { background: #fff; border: 1px solid #cbd5e1; padding: 10px 20px; border-radius: 8px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 8px; }
-        .r-print-btn:hover { background: #f1f5f9; }
-
-        /* Filter Section */
-        .r-filter-wrap { background: #fff; padding: 25px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 30px; display: flex; align-items: flex-end; gap: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-        .r-filter-group { flex: 1; }
-        .r-filter-group label { display: block; font-size: 12px; font-weight: 800; color: var(--r-dark); margin-bottom: 8px; text-transform: uppercase; }
-        .r-filter-group input { width: 100%; height: 42px; border-radius: 8px; border: 1px solid #cbd5e1; padding: 0 12px; font-size: 14px; }
-        .r-submit-btn { background: var(--r-red); color: #fff; border: none; padding: 0 30px; height: 42px; border-radius: 8px; font-weight: 700; cursor: pointer; }
-
-        /* KPI Grid */
-        .r-kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 25px; margin-bottom: 30px; }
-        .r-card { background: #fff; padding: 25px; border-radius: 15px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); border-top: 5px solid var(--r-red); }
-        .r-card label { display: block; font-size: 11px; font-weight: 700; color: var(--r-gray); text-transform: uppercase; letter-spacing: 1px; }
-        .r-card .big-val { font-size: 34px; font-weight: 900; color: var(--r-dark); display: block; margin-top: 10px; }
-        .r-card.peak { border-top-color: var(--r-blue); }
-        .r-card.peak .big-val { color: var(--r-blue); }
-
-        /* Module Grid */
-        .r-mod-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; }
-        .r-module { background: #fff; border-radius: 15px; border: 1px solid #e2e8f0; padding: 25px; }
-        .r-module h3 { margin: 0 0 20px 0; font-size: 18px; font-weight: 900; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f8fafc; padding-bottom: 15px; }
-        .r-module h3 span { font-size: 10px; background: var(--r-dark); color: #fff; padding: 4px 10px; border-radius: 6px; text-transform: uppercase; }
-
-        .r-table { width: 100%; border-collapse: collapse; }
-        .r-table th { text-align: left; font-size: 11px; color: var(--r-gray); text-transform: uppercase; padding-bottom: 12px; }
-        .r-table td { padding: 12px 0; border-bottom: 1px solid #f8fafc; font-size: 14px; color: var(--r-dark); }
-        .r-qty-tag { background: #fee2e2; color: var(--r-red); padding: 3px 10px; border-radius: 12px; font-weight: 800; font-size: 11px; }
-
-        @media print {
-            .r-filter-wrap, .r-print-btn, #adminmenumain, #wpadminbar { display: none !important; }
-            .r-container { padding: 0; background: #fff; }
-            .r-card, .r-module { box-shadow: none; border: 1px solid #eee; }
+        #afd-alarm-unlock { 
+            background: #fffbeb; border: 1px solid #fef3c7; padding: 15px; margin-bottom: 25px; border-radius: 12px; 
+            text-align: center; cursor: pointer; font-weight: bold; color: #92400e; display: flex; align-items: center; justify-content: center; gap: 10px; 
         }
+
+        .afd-header-flex { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 25px; }
+        .afd-card { background: #fff; border-radius: 16px; border: 1px solid var(--r-border); box-shadow: 0 1px 3px rgba(0,0,0,0.05); overflow: hidden; height: fit-content; }
+        
+        .kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 30px; }
+        .kpi-box { background: #fff; padding: 25px; border-radius: 16px; border: 1px solid var(--r-border); border-top: 5px solid var(--r-blue); }
+        .kpi-label { font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+        .kpi-val { font-size: 32px; font-weight: 900; color: #0f172a; margin-top: 5px; display: block; }
+
+        .filter-section { display: flex; gap: 15px; align-items: flex-end; margin-bottom: 30px; padding: 20px; background: #fff; border-radius: 16px; border: 1px solid var(--r-border); }
+        .filter-section input { height: 40px; border-radius: 8px; border: 1px solid #cbd5e1; }
+
+        .report-table { width: 100%; border-collapse: collapse; }
+        .report-table th { background: #f1f5f9; padding: 15px; text-align: left; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; }
+        .report-table td { padding: 18px 15px; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
+        
+        .afd-btn { text-decoration: none; padding: 8px 12px; border-radius: 8px; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; border: 1px solid #e2e8f0; background: #fff; color: #334155; }
+        .afd-btn-edit { background: #eff6ff; color: #2563eb; border-color: #bfdbfe; }
+        
+        .badge { padding: 4px 10px; border-radius: 6px; font-weight: 800; font-size: 12px; }
+        .badge-blue { background: #eef2ff; color: var(--r-blue); }
+        .badge-purple { background: #f5f3ff; color: var(--r-purple); }
     </style>
 
-    <div class="r-container">
-        <header class="r-header">
+    <div class="afd-reports-wrap">
+
+        <div class="afd-header-flex">
             <div>
-                <h1>Report</h1>
-                <p style="color: var(--r-gray); margin: 5px 0 0;">
-                    Report Period: <strong><?php echo date('M j, Y', strtotime($filter_from)); ?></strong> — <strong><?php echo date('M j, Y', strtotime($filter_to)); ?></strong>
-                </p>
-            </div>
-        </header>
-
-        <form method="get" class="r-filter-wrap">
-            <input type="hidden" name="page" value="<?php echo esc_attr($_GET['page']); ?>">
-            <input type="hidden" name="tab" value="reports">
-            
-            <div class="r-filter-group">
-                <label>Date From</label>
-                <input type="date" name="fd_from" value="<?php echo esc_attr($filter_from); ?>">
-            </div>
-            
-            <div class="r-filter-group">
-                <label>Date To</label>
-                <input type="date" name="fd_to" value="<?php echo esc_attr($filter_to); ?>">
-            </div>
-            
-            <button type="submit" class="r-submit-btn">Run Report</button>
-            <a href="admin.php?page=awesome_food_delivery&tab=reports" style="font-size: 12px; color: var(--r-gray); text-decoration: none;">Reset Today</a>
-        </form>
-
-        <div class="r-kpi-grid">
-            <div class="r-card">
-                <label>Total Orders</label>
-                <span class="big-val"><?php echo $stats['range']['count']; ?></span>
-            </div>
-            <div class="r-card">
-                <label>Gross Revenue</label>
-                <span class="big-val"><?php echo $afon_currency . number_format($stats['range']['rev'], 2); ?></span>
-            </div>
-            <div class="r-card peak">
-                <label>Peak Order Time</label>
-                <span class="big-val"><?php echo $peak_time_formatted; ?></span>
+                <h1 style="font-weight:900; margin:0; font-size:28px;margin-bottom: 10px">Report</h1>
+                <p style="color:#64748b; margin:5px 0 0;">Visualizing data from <?php echo date('M j', strtotime($filter_from)); ?> to <?php echo date('M j', strtotime($filter_to)); ?>.</p>
             </div>
         </div>
 
-        <div class="r-mod-grid">
-            <div class="r-module">
-                <h3>Menu <span>Top 5 Sellers</span></h3>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
-                    <div>
-                        <table class="r-table">
-                            <thead><tr><th colspan="2">Selected Period</th></tr></thead>
-                            <?php foreach($get_top_5($stats['range']['items']) as $name => $q): ?>
-                            <tr>
-                                <td><?php echo esc_html($name); ?></td>
-                                <td align="right"><span class="r-qty-tag"><?php echo $q; ?></span></td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </table>
-                    </div>
-                    <div>
-                        <table class="r-table">
-                            <thead><tr><th colspan="2">Last 7 Days</th></tr></thead>
-                            <?php foreach($get_top_5($stats['week']['items']) as $name => $q): ?>
-                            <tr>
-                                <td><?php echo esc_html($name); ?></td>
-                                <td align="right"><span class="r-qty-tag"><?php echo $q; ?></span></td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </table>
-                    </div>
-                </div>
+        <form method="get" class="filter-section">
+            <input type="hidden" name="page" value="awesome_food_delivery"><input type="hidden" name="tab" value="reports">
+            <div><label class="kpi-label">From</label><input type="date" name="fd_from" value="<?php echo $filter_from; ?>"></div>
+            <div><label class="kpi-label">To</label><input type="date" name="fd_to" value="<?php echo $filter_to; ?>"></div>
+            <button type="submit" class="button button-primary" style="height:40px; font-weight:bold; padding:0 25px;">Update Range</button>
+        </form>
+
+        <div class="kpi-grid">
+            <div class="kpi-box"><span class="kpi-label">Order Volume</span><span class="kpi-val"><?php echo $stats['count']; ?></span></div>
+            <div class="kpi-box"><span class="kpi-label">Gross Revenue</span><span class="kpi-val"><?php echo $afon_currency . number_format($stats['total_rev'], 2); ?></span></div>
+            <div class="kpi-box" style="border-top-color:var(--r-green);"><span class="kpi-label">Peak Hour</span><span class="kpi-val"><?php echo date("g A", strtotime("$peak_hour:00")); ?></span></div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 350px; gap: 25px;">
+            
+            <div class="afd-card">
+                <div style="padding:20px; border-bottom:1px solid #f1f5f9; font-weight:800; text-transform:uppercase; font-size:12px;">Detailed Order History</div>
+                <table class="report-table">
+                    <thead>
+                        <tr><th>ID</th><th>Customer</th><th>Status</th><th>Total</th><th style="text-align:right;">Actions</th></tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($orders as $o) : ?>
+                        <tr>
+                            <td><strong>#<?php echo $o->display_id; ?></strong></td>
+                            <td><div style="font-weight:700;"><?php echo esc_html($o->full_name); ?></div></td>
+                            <td><span style="font-size:10px; font-weight:800;"><?php echo strtoupper($o->order_status); ?></span></td>
+                            <td style="font-weight:800; color:var(--r-green);"><?php echo $afon_currency . number_format($o->total_price, 2); ?></td>
+                            <td align="right">
+                                <a class="afd-btn afd-btn-edit" href="?page=awesome_food_delivery&tab=orders&order_id=<?php echo $o->id; ?>&action=edit"><span class="dashicons dashicons-edit"></span></a>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
             </div>
 
-            <div class="r-module">
-                <h3>Category</h3>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
-                    <div>
-                        <table class="r-table">
-                            <thead><tr><th colspan="2">Selected Period</th></tr></thead>
-                            <?php foreach($get_top_5($stats['range']['cats']) as $name => $q): ?>
-                            <tr>
-                                <td><?php echo esc_html($name); ?></td>
-                                <td align="right"><span class="r-qty-tag"><?php echo $q; ?></span></td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </table>
+            <div style="display: flex; flex-direction: column; gap: 25px;">
+                <div class="afd-card">
+                    <div style="padding:15px; border-bottom:1px solid #f1f5f9; font-weight:800; text-transform:uppercase; font-size:11px; color:var(--r-blue);">Top 5 Selling Items</div>
+                    <div style="padding:10px;">
+                        <?php foreach ($top_sellers as $name => $qty) : ?>
+                            <div style="display:flex; justify-content:space-between; padding:12px; border-bottom:1px solid #f8fafc;">
+                                <span style="font-weight:600; font-size:13px;"><?php echo esc_html($name); ?></span>
+                                <span class="badge badge-blue"><?php echo $qty; ?></span>
+                            </div>
+                        <?php endforeach; ?>
                     </div>
-                    <div>
-                        <table class="r-table">
-                            <thead><tr><th colspan="2">Last 7 Days</th></tr></thead>
-                            <?php foreach($get_top_5($stats['week']['cats']) as $name => $q): ?>
-                            <tr>
-                                <td><?php echo esc_html($name); ?></td>
-                                <td align="right"><span class="r-qty-tag"><?php echo $q; ?></span></td>
-                            </tr>
-                            <?php endforeach; ?>
-                        </table>
+                </div>
+
+                <div class="afd-card">
+                    <div style="padding:15px; border-bottom:1px solid #f1f5f9; font-weight:800; text-transform:uppercase; font-size:11px; color:var(--r-purple);">Top Categories</div>
+                    <div style="padding:10px;">
+                        <?php foreach ($top_categories as $cat => $qty) : ?>
+                            <div style="display:flex; justify-content:space-between; padding:12px; border-bottom:1px solid #f8fafc;">
+                                <span style="font-weight:600; font-size:13px;"><?php echo esc_html($cat); ?></span>
+                                <span class="badge badge-purple"><?php echo $qty; ?> Items</span>
+                            </div>
+                        <?php endforeach; ?>
                     </div>
                 </div>
             </div>
         </div>
     </div>
+
+    <script>
+    jQuery(document).ready(function($){
+        const audio = document.getElementById('afdOrderAlarm');
+        const unlockBtn = document.getElementById('afd-alarm-unlock');
+        const pendingNew = <?php echo (int)$alarm_trigger_count; ?>;
+        
+        if (sessionStorage.getItem('afd_audio_active') === 'true') {
+            unlockBtn.style.display = 'none';
+            if (pendingNew > 0) { audio.play().catch(e => { unlockBtn.style.display = 'flex'; }); }
+        }
+        
+        unlockBtn.addEventListener('click', function() {
+            sessionStorage.setItem('afd_audio_active', 'true');
+            unlockBtn.style.display = 'none';
+            if (pendingNew > 0) { audio.play(); }
+        });
+
+        var refresh = 60;
+        setInterval(function(){ 
+            refresh--; $('#timer-count').text(refresh); 
+            if(refresh <= 0) location.reload(); 
+        }, 1000);
+    });
+    </script>
     <?php
 }

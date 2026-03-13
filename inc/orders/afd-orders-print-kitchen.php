@@ -45,14 +45,15 @@ if (isset($_GET['action']) && $_GET['action'] === 'print' && $_GET['type'] === '
     }
     $service_fee   = (float)get_option('afd_service_charge', '0.00');
     $bag_fee       = (float)get_option('afd_bag_charge', '0.00');
-    $delivery_fee  = floatval($order->delivery_fee);
+    $delivery_charge  = floatval($order->delivery_charge);
     $tips          = isset($order->tip_amount) ? floatval($order->tip_amount) : 0.00; 
 
-    $gross_total = $items_subtotal + $service_fee + $bag_fee + $delivery_fee + $tips;
+    $gross_total = $items_subtotal + $service_fee + $bag_fee + $delivery_charge + $tips;
     $dynamic_discount = $gross_total - floatval($order->total_price);
 
-    ?>
-    <!DOCTYPE html>
+?>
+
+<!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
@@ -157,9 +158,11 @@ if (isset($_GET['action']) && $_GET['action'] === 'print' && $_GET['type'] === '
                     ?>
                         <tr class="item-row">
                             <td class="qty"><?php echo intval($item['qty']); ?>x</td>
+                            
                             <td>
                                 <span class="item-name"><?php echo esc_html($item['name']); ?></span>
                                 <span class="unit-price">£<?php echo number_format($unit_p, 2); ?> each</span>
+                                <b><?php if (!empty($item['vName'])) { echo esc_html($item['vName']); } ?></b>
                             </td>
                             <td class="item-price">£<?php echo number_format($line_total, 2); ?></td>
                         </tr>
@@ -168,38 +171,46 @@ if (isset($_GET['action']) && $_GET['action'] === 'print' && $_GET['type'] === '
             </table>
 
             <div class="summary-section">
-                <div class="summary-line">
-                    <span>Subtotal</span>
-                    <span>£<?php echo number_format($items_subtotal, 2); ?></span>
-                </div>
+    <div class="summary-line">
+        <span>Subtotal</span>
+        <span>£<?php echo number_format($items_subtotal, 2); ?></span>
+    </div>
 
-                <?php if($dynamic_discount > 0.01): ?>
-                <div class="summary-line">
-                    <span>Discount</span>
-                    <span>-£<?php echo number_format((float)$dynamic_discount, 2); ?></span>
-                </div>
-                <?php endif; ?>
+    <div class="summary-line">
+        <span>Discount</span>
+        <span>-£<?php echo number_format(max(0, (float)$order->delivery_discount), 2); ?></span>
+    </div>
 
-                <?php if ($service_fee > 0): ?>
-                <div class="summary-line"><span>Service Charge</span><span>£<?php echo number_format((float)$service_fee, 2); ?></span></div>
-                <?php endif; ?>
+    <div class="summary-line">
+        <span>Service Charge</span>
+        <span>£<?php echo number_format((float)$service_fee, 2); ?></span>
+    </div>
 
-                <?php if ($bag_fee > 0): ?>
-                <div class="summary-line"><span>Bag Charge</span><span>£<?php echo number_format((float)$bag_fee, 2); ?></span></div>
-                <?php endif; ?>
-                
-                <div class="summary-line"><span>Delivery</span><span>£<?php echo number_format($delivery_fee, 2); ?></span></div>
+    <div class="summary-line">
+        <span>Bag Charge</span>
+        <span>£<?php echo number_format((float)$bag_fee, 2); ?></span>
+    </div>
+    
+    <div class="summary-line">
+        <span>Delivery</span>
+        <span>£<?php echo number_format($delivery_charge, 2); ?></span>
+    </div>
 
-                <div class="summary-line bold-total">
-                    <span>TOTAL DUE</span>
-                    <span>£<?php echo number_format($order->total_price, 2); ?></span>
-                </div>
-                
-                <div class="summary-line" style="margin-top: 10px; font-size: 24px;">
-                    <span>METHOD:</span>
-                    <span><?php echo esc_html($payment_method); ?></span>
-                </div>
-            </div>
+    <div class="summary-line">
+        <span>Tip</span>
+        <span>£<?php echo number_format(max(0, (float)$tips), 2); ?></span>
+    </div>
+
+    <div class="summary-line bold-total">
+        <span>TOTAL</span>
+        <span>£<?php echo number_format(floatval($order->total_price), 2); ?></span>
+    </div>
+    
+    <div class="summary-line" style="margin-top: 10px; font-size: 24px;">
+        <span>METHOD:</span>
+        <span><?php echo esc_html($payment_method); ?></span>
+    </div>
+</div>
 
             <div class="customer-section">
                 <span class="cust-name"><?php echo esc_html($order->full_name); ?></span>
@@ -208,15 +219,39 @@ if (isset($_GET['action']) && $_GET['action'] === 'print' && $_GET['type'] === '
 
             <?php if($order->order_type === 'delivery'): ?>
                 <div class="cust-addr-list">
-                    <span class="notes-label">DELIVERY ADDRESS:</span>
-                    <?php if(!empty($addr_list)): ?>
-                        <?php foreach($addr_list as $line): ?>
-                            <span class="addr-item"><?php echo esc_html($line); ?></span>
-                        <?php endforeach; ?>
-                    <?php elseif(!empty($order->address)): ?>
-                        <span class="addr-item"><?php echo nl2br(esc_html($order->address)); ?></span>
-                    <?php endif; ?>
-                </div>
+    <span class="notes-label">DELIVERY ADDRESS:</span>
+    
+    <?php 
+    // Scenario 1: Use the pre-formatted address list if available
+    if (!empty($addr_list)): ?>
+        <?php foreach($addr_list as $line): ?>
+            <span class="addr-item"><?php echo esc_html($line); ?></span>
+        <?php endforeach; ?>
+
+    <?php 
+    // Scenario 2: Use the single 'address' text field if list is empty
+    elseif (!empty($order->address)): ?>
+        <span class="addr-item"><?php echo nl2br(esc_html($order->address)); ?></span>
+
+    <?php 
+    // Scenario 3: Fallback to individual database columns if everything else is empty
+    else: 
+        $parts = [];
+        if (!empty($order->flat_no))      $parts[] = "Flat " . $order->flat_no;
+        if (!empty($order->door_no))      $parts[] = "Door " . $order->door_no;
+        if (!empty($order->building_name)) $parts[] = $order->building_name;
+        if (!empty($order->road_name))     $parts[] = $order->road_name;
+        if (!empty($order->postcode))      $parts[] = strtoupper($order->postcode);
+
+        if (!empty($parts)):
+            foreach ($parts as $part): ?>
+                <span class="addr-item"><?php echo esc_html($part); ?></span>
+            <?php endforeach; 
+        else: ?>
+            <span class="addr-item" style="color: #999;">No address provided</span>
+        <?php endif; ?>
+    <?php endif; ?>
+</div>
             <?php endif; ?>
 
             <?php if (!empty($delivery_notes)) : ?>

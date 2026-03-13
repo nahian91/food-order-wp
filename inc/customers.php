@@ -7,7 +7,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
  */
 function fd_customers_tab() {
     global $wpdb;
-    $afon_currency = get_option( 'fd_currency', '€' );
+    $afon_currency = get_option( 'fd_currency', '£' );
     $afon_page_slug = 'awesome_food_delivery';
     $table_orders = $wpdb->prefix . 'afd_food_orders';
 

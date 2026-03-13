@@ -11,26 +11,58 @@ function fd_food_items_shortcode() {
     // 1. SETTINGS & LIVE STATUS
     $store_status = function_exists('get_afd_restaurant_status') ? get_afd_restaurant_status() : ['status' => 'open', 'is_open' => true];
     $is_actually_open = ($store_status['status'] === 'open' || $store_status['status'] === 'warning');
+
+$is_logged_in = is_user_logged_in() ? 'true' : 'false';
+$custom_login_url = home_url('/login/'); 
+$redirect_after_login = add_query_arg('redirect_to', home_url('/checkout/'), $custom_login_url);
     
     $currency = '£';
     
-    $delivery_fee       = get_option('afd_delivery_charge', '0.00');
+    $delivery_charge       = get_option('afd_delivery_charge', '0.00');
     $collection_fee     = get_option('afd_pickup_charge', '0.00'); 
     $service_fee        = get_option('afd_service_charge', '0.00');
     $bag_fee            = get_option('afd_bag_charge', '0.00');
     $delivery_discount   = get_option('afd_delivery_discount_percent', '0'); 
     $collection_discount = get_option('afd_pickup_discount_percent', '0');
 
-    // DYNAMIC TIME CALCULATION
-    $schedule    = get_option('afd_schedule', []);
-    $current_day = current_datetime()->format('D');
-    $time_options = [];
+    // DYNAMIC TIME CALCULATION (30 Mins Intervals + Tomorrow Support)
+    $now = current_datetime();
+    $current_day = $now->format('D');
+    $current_ts = $now->getTimestamp();
+    
+    // Get today's and tomorrow's schedule
+    $schedule = get_option('afd_schedule', []);
+    $today_sched = !empty($schedule[$current_day]) ? $schedule[$current_day] : null;
+    
+    $target_day = $current_day;
+    $target_sched = $today_sched;
 
-    if (!empty($schedule[$current_day]) && isset($schedule[$current_day]['enabled']) && $schedule[$current_day]['enabled']) {
-        $start_ts = strtotime($schedule[$current_day]['open']);
-        $end_ts   = strtotime($schedule[$current_day]['close']);
+    // Logic: If today is disabled OR current time > closing time, look at tomorrow
+    if ($target_sched) {
+        $closing_time = strtotime($target_sched['close']);
+        if (!$target_sched['enabled'] || $current_ts > $closing_time) {
+            $tomorrow_dt = $now->modify('+1 day');
+            $target_day = $tomorrow_dt->format('D');
+            $target_sched = !empty($schedule[$target_day]) ? $schedule[$target_day] : null;
+        }
+    }
+
+    $time_options = [];
+    if ($target_sched && !empty($target_sched['enabled'])) {
+        $start_ts = strtotime($target_sched['open']);
+        $end_ts   = strtotime($target_sched['close']);
+        
+        // Handle overnight shifts (e.g., 6PM to 2AM)
         if ($end_ts <= $start_ts) { $end_ts += 86400; }
-        for ($t = $start_ts; $t <= $end_ts; $t += 3600) {
+
+        // Start from opening time OR current time (if today), whichever is later
+        $loop_start = ($target_day === $current_day) ? max($start_ts, $current_ts) : $start_ts;
+        
+        // Round to next 30 min interval
+        $loop_start = ceil($loop_start / 1800) * 1800;
+
+        for ($t = $loop_start; $t <= $end_ts; $t += 1800) { // 1800s = 30 mins
+            $label = ($target_day !== $current_day) ? 'Tomorrow ' : '';
             $time_options[date('H:i', $t)] = date('h:i A', $t);
         }
     }
@@ -112,7 +144,7 @@ function fd_food_items_shortcode() {
     position: sticky;
     top: 80px; /* Adjust based on your header height */
     height: fit-content;
-    max-height: calc(100vh - 40px);
+    max-height: calc(100vh - 120px);
     overflow-y: auto;
     display: block; /* Ensure it's visible for desktop sticky */
 }
@@ -184,6 +216,16 @@ body:not(.admin-bar) .fd-mobile-cat-header {
         display: none; /* Usually hidden on mobile in favor of the drawer */
     }
 }
+
+/* Highlight for the sticky sidebar category */
+.fd-cat-grid-item.active-cat {
+    border-color: #d63638 !important;
+    background: #fff5f5 !important;
+}
+.fd-cat-grid-item.active-cat span {
+    color: #d63638 !important;
+    font-weight: 800 !important;
+}
 </style>
 
 <div class="fd-main-wrapper">
@@ -192,7 +234,8 @@ body:not(.admin-bar) .fd-mobile-cat-header {
             <span class="dashicons dashicons-menu"></span>
             <span>Menu Categories</span>
         </div>
-        <div style="font-size: 12px; font-weight: 700; color: #666;">Select a section</div>
+
+<div id="fd-current-cat-name" style="font-size: 12px; font-weight: 700; color: #d63638;">Select a section</div>
     </div>
 
     <div class="fd-container">
@@ -296,7 +339,7 @@ body:not(.admin-bar) .fd-mobile-cat-header {
                 </div>
 
                 <h4 style="margin:0 0 15px 0; font-weight:800; font-size:20px;">Your Order</h4>
-                <div id="fd-cart-list" style="max-height: 300px; overflow-y: auto; margin-bottom: 20px;"></div>
+                <div id="fd-cart-list"></div>
 
                 <div class="fd-summary-container">
                     <div class="fd-summary-row"><span>Subtotal</span><span><?php echo $currency; ?><span id="br-subtotal">0.00</span></span></div>
@@ -364,7 +407,7 @@ jQuery(document).ready(function($){
     let pendingItem = null; 
     
     const config = {
-        deliveryFee: parseFloat("<?php echo $delivery_fee; ?>") || 0,
+        deliveryFee: parseFloat("<?php echo $delivery_charge; ?>") || 0,
         collectionFee: parseFloat("<?php echo $collection_fee; ?>") || 0,
         serviceFee: parseFloat("<?php echo $service_fee; ?>") || 0,
         bagFee: parseFloat("<?php echo $bag_fee; ?>") || 0,
@@ -372,6 +415,12 @@ jQuery(document).ready(function($){
         collectionDiscount: parseFloat("<?php echo $collection_discount; ?>") || 0,
         currency: "<?php echo $currency; ?>"
     };
+
+    // Restore Pre-Order Time on Load
+    const savedTime = localStorage.getItem('fd_scheduled_time');
+    if (savedTime) {
+        $('#fd-scheduled-time').val(savedTime);
+    }
 
     function updateCart() {
         const container = $('#fd-cart-list');
@@ -473,11 +522,7 @@ jQuery(document).ready(function($){
     $(document).on('click', '.order-btn', function() {
         const $card = $(this).closest('.fd-food-card');
         const qty = parseInt($card.find('.fd-item-qty').text());
-
-        if (qty <= 0) {
-            alert("Please select a quantity first!");
-            return;
-        }
+        if (qty <= 0) { alert("Please select a quantity first!"); return; }
 
         const itemData = {
             id: $card.data('id'),
@@ -547,7 +592,13 @@ jQuery(document).ready(function($){
         $('.fd-food-card').each(function() { $(this).toggle($(this).data('title').indexOf(val) > -1); });
     });
 
-    $('input[name="order_type"], #fd-tip-amount').on('change input', updateCart);
+    // Time Save
+    $('input[name="order_type"], #fd-tip-amount, #fd-scheduled-time').on('change input', function() {
+        if($(this).attr('id') === 'fd-scheduled-time') {
+            localStorage.setItem('fd_scheduled_time', $(this).val());
+        }
+        updateCart();
+    });
 
     $(document).on('click', '#fd-checkout-trigger', function(e) {
         e.preventDefault();
@@ -555,7 +606,40 @@ jQuery(document).ready(function($){
         localStorage.setItem('fd_scheduled_time', $('#fd-scheduled-time').val());
         localStorage.setItem('fd_kitchen_notes', $('#fd-kitchen-notes').val());
         localStorage.setItem('fd_order_type', $('input[name="order_type"]:checked').val());
-        window.location.href = "<?php echo home_url('/checkout'); ?>";
+        localStorage.setItem('fd_tip_amount', $('#fd-tip-amount').val());
+        const isLoggedIn = <?php echo $is_logged_in; ?>;
+        if (isLoggedIn) { window.location.href = "<?php echo home_url('/checkout/'); ?>"; } 
+        else { window.location.href = "<?php echo $redirect_after_login; ?>"; }
+    });
+
+    // Auto Category Selector & Mobile Header Text Update
+    const observerOptions = { root: null, rootMargin: '-20% 0px -70% 0px', threshold: 0 };
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                const id = entry.target.getAttribute('id');
+                const activeLink = $(`.fd-cat-grid-item[href="#${id}"]`);
+                const catName = activeLink.find('span').text(); // Get name from sidebar link
+
+                // 1. Highlight Sidebar
+                $('.fd-cat-grid-item').removeClass('active-cat'); 
+                activeLink.addClass('active-cat');
+                
+                // 2. Update Mobile Header Text
+                if (catName) {
+                    $('#fd-current-cat-name').text(catName);
+                }
+
+                // 3. Auto-scroll sidebar if overflowed
+                if (activeLink.length > 0) {
+                    activeLink[0].scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
+                }
+            }
+        });
+    }, observerOptions);
+
+    document.querySelectorAll('.food-menu').forEach((section) => {
+        observer.observe(section);
     });
 
     updateCart();

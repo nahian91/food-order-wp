@@ -73,7 +73,7 @@ function fd_view_item_tab($item_id){
                     <?php endif; ?>
                     
                     <div style="margin-top:20px; text-align:center;">
-                        <span class="afd-price-display"><?php echo number_format(floatval($price), 2, ',', '.'); ?> €</span>
+                        <span class="afd-price-display"><?php echo number_format(floatval($price), 2, ',', '.'); ?> £</span>
                         <small style="text-transform:uppercase; color:#a7aaad; font-weight:700; letter-spacing:1px;">Base Price</small>
                     </div>
                 </div>

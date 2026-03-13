@@ -57,7 +57,7 @@ function fd_view_extra_tab($afon_item_id){
                                 <div class="afon-data-group">
                                     <label class="afon-label-muted">Unit Price</label>
                                     <div class="afon-price-display">
-                                        <?php echo number_format($afon_item['price'] ?? 0, 2); ?> €
+                                        <?php echo number_format($afon_item['price'] ?? 0, 2); ?> £
                                     </div>
                                 </div>
                                 

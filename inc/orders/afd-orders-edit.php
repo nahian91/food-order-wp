@@ -22,17 +22,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'print' && isset($_GET['type']
     if (!$order) wp_die('Order not found.');
 
     $items = json_decode($order->items_json, true) ?: [];
-    
-    echo '<style>
-        body { font-family: sans-serif; padding: 20px; color: #333; }
-        .invoice-box { max-width: 800px; margin: auto; border: 1px solid #eee; padding: 30px; }
-        .invoice-box table { width: 100%; text-align: left; border-collapse: collapse; margin-top: 20px; }
-        .invoice-box table td, .invoice-box table th { padding: 10px; border-bottom: 1px solid #eee; }
-        .invoice-box table th { background: #f9f9f9; }
-        .total-row { font-weight: bold; font-size: 1.2em; border-top: 2px solid #333; }
-        .no-print { background: #2271b1; color: white; padding: 10px 20px; border: none; cursor: pointer; text-decoration: none; border-radius: 4px; display: inline-block; margin-bottom: 20px;}
-        @media print { .no-print { display: none; } }
-    </style>';
+
 
     echo '<div class="invoice-box">';
     echo '<button class="no-print" onclick="window.print()">Print Invoice</button>';
@@ -74,12 +64,15 @@ if (isset($_GET['action']) && $_GET['action'] === 'delete') {
 }
 
 /*--------------------------------------------------------------
-# 2. DATABASE AUTO-REPAIR (Ensures columns exist)
+# 2. DATABASE AUTO-REPAIR (Updated for Service & Bag Fees)
 --------------------------------------------------------------*/
 $required_columns = [
     'kitchen_notes'   => "TEXT NOT NULL AFTER `address`",
     'delivery_notes'  => "TEXT NOT NULL AFTER `kitchen_notes`",
     'tip_amount'      => "DECIMAL(10,2) DEFAULT '0.00' AFTER `delivery_fee`",
+    'service_fee'     => "DECIMAL(10,2) DEFAULT '0.00' AFTER `tip_amount`", // ADDED
+    'bag_fee'         => "DECIMAL(10,2) DEFAULT '0.00' AFTER `service_fee`", // ADDED
+    'discount_amount' => "DECIMAL(10,2) DEFAULT '0.00' AFTER `tip_amount` ",
     'delay_message'   => "TEXT NULL AFTER `scheduled_time`",
     'postcode'        => "VARCHAR(20) NULL AFTER `address`",
     'order_type'      => "VARCHAR(50) DEFAULT 'delivery' AFTER `order_status`",
@@ -98,12 +91,11 @@ foreach ($required_columns as $col => $definition) {
 }
 
 /*--------------------------------------------------------------
-# 3. SAVE LOGIC
+# 3. SAVE LOGIC (Fixed for persistence)
 --------------------------------------------------------------*/
 if (isset($_POST['afon_update_order'])) {
     check_admin_referer('afon_update_order_action', 'afon_update_order_nonce');
 
-    // Process Order Items
     $afon_updated_items = [];
     if (isset($_POST['afon_items_name']) && is_array($_POST['afon_items_name'])) {
         foreach ($_POST['afon_items_name'] as $idx => $name) {
@@ -111,19 +103,18 @@ if (isset($_POST['afon_update_order'])) {
                 $afon_updated_items[] = [
                     'name'  => sanitize_text_field($name),
                     'qty'   => intval($_POST['afon_items_qty'][$idx]),
-                    'price' => floatval($_POST['afon_items_price'][$idx]) 
+                    'price' => floatval($_POST['afon_items_price'][$idx]), 
+                    'vPrice' => floatval($_POST['afon_items_vprice'][$idx])
                 ];
             }
         }
     }
 
-    // Timer Sync Logic
     $mins_input = intval($_POST['afon_scheduled_time']);
     $prep_time_setting = intval(get_option('afd_cooking_time', 20)); 
     $new_anchor_ts = current_time('timestamp') + (($mins_input - $prep_time_setting) * 60);
     $new_order_date = date('Y-m-d H:i:s', $new_anchor_ts);
 
-    // FIX: Added isset() checks to prevent Undefined array key warnings
     $update_data = [
         'kitchen_notes'   => isset($_POST['afon_kitchen_notes']) ? sanitize_textarea_field($_POST['afon_kitchen_notes']) : '',
         'delivery_notes'  => isset($_POST['afon_delivery_notes']) ? sanitize_textarea_field($_POST['afon_delivery_notes']) : '',
@@ -131,7 +122,11 @@ if (isset($_POST['afon_update_order'])) {
         'order_status'    => sanitize_text_field($_POST['afon_status']),
         'order_type'      => sanitize_text_field($_POST['afon_order_type']),
         'items_json'      => json_encode($afon_updated_items),
-        'delivery_fee'    => floatval($_POST['afon_delivery_fee']),
+        'delivery_charge'    => floatval($_POST['afon_delivery_fee']),
+        'service_fee'     => floatval($_POST['afon_service_fee'] ?? 0), // SAVING SERVICE FEE
+        'bag_fee'         => floatval($_POST['afon_bag_fee'] ?? 0),     // SAVING BAG FEE
+        'delivery_discount' => floatval($_POST['afon_discount_amt'] ?? 0),
+'total_price'     => floatval($_POST['afon_total_price']), // This is the 'final-total' from JS
         'tip_amount'      => floatval($_POST['afon_tip_amount']),
         'total_price'     => floatval($_POST['afon_total_price']), 
         'scheduled_time'  => $mins_input,
@@ -143,6 +138,9 @@ if (isset($_POST['afon_update_order'])) {
 
     $wpdb->update($table_name, $update_data, ['id' => $afon_order_id]);
     echo '<div class="updated notice is-dismissible"><p>Order updated successfully.</p></div>';
+    
+    // Refresh $order object to show new values immediately
+    $order = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $afon_order_id));
 }
 
 /*--------------------------------------------------------------
@@ -190,41 +188,6 @@ $delete_url = wp_nonce_url($base_url . '&action=delete', 'delete_order_' . $afon
 $invoice_url = $base_url . '&action=print&type=customer';
 ?>
 
-<style>
-    :root { --clr-primary: #ef4444; --clr-blue: #2563eb; --clr-border: #e2e8f0; --clr-dark: #1e293b; --res-red: #d63638; }
-    .edit-order-wrap { margin: 20px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    .view-grid { display: grid; grid-template-columns: 1fr 380px; gap: 25px; }
-    .view-card { background: #fff; border: 1px solid var(--clr-border); border-radius: 12px; overflow: hidden; margin-bottom: 25px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-    .view-card-header { padding: 15px 20px; background: #f8fafc; border-bottom: 1px solid var(--clr-border); display: flex; align-items: center; justify-content: space-between; }
-    .view-card-header h2 { margin: 0; font-size: 11px; font-weight: 800; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px; }
-    .view-card-body { padding: 20px; }
-    .edit-input { width: 100%; border: 1px solid var(--clr-border); border-radius: 8px; padding: 10px; font-size: 14px; }
-    label.field-label { font-size: 11px; font-weight: 800; color: #64748b; display: block; margin-bottom: 6px; text-transform: uppercase; }
-    .view-table { width: 100%; border-collapse: collapse; }
-    .view-table th { text-align: left; padding: 12px; background: #f8fafc; font-size: 11px; border-bottom: 1px solid var(--clr-border); color: #64748b; }
-    .view-table td { padding: 12px; border-bottom: 1px solid #f1f5f9; }
-    .input-with-symbol { position: relative; display: flex; align-items: center; }
-    .input-with-symbol span { position: absolute; left: 12px; font-weight: 700; color: #94a3b8; }
-    .input-with-symbol input { padding-left: 28px; font-weight: 600; }
-    .btn-v { text-decoration: none; padding: 8px 15px; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer; border: 1px solid #ccd0d4; background: #fff; }
-    .btn-save { background: var(--clr-primary); color: #fff; border: none; width: 100%; height: 50px; font-size: 15px; border-radius: 10px; cursor: pointer; font-weight: 700;}
-    .btn-action { text-decoration: none; padding: 10px 15px; border-radius: 8px; font-weight: 700; font-size: 13px; display: inline-flex; align-items: center; gap: 8px; border: 1px solid #ccd0d4; background: #fff; color: #2c3338; cursor: pointer; }
-    .btn-delete { color: var(--res-red); border-color: #f5c2c7; background: #fff8f8; }
-    .grand-total-box { text-align: right; border-top: 2px solid var(--clr-dark); padding-top: 15px; }
-    .final-price-input { font-size: 32px; font-weight: 900; color: var(--clr-primary); text-align: right; border: none; background: transparent; width: 180px; pointer-events: none; }
-    .addr-pill { background: #f1f5f9; padding: 15px; border-radius: 10px; border: 1px solid var(--clr-border); margin-top: 10px; font-size: 13px;}
-    .addr-row { display: flex; justify-content: space-between; border-bottom: 1px solid #e2e8f0; padding: 6px 0; }
-    .addr-val { font-weight: 500; text-align: right; }
-    .type-box { display: block; width: 100%; text-align: center; padding: 10px; border-radius: 8px; font-weight: 800; font-size: 14px; margin-top: 10px; }
-    .type-box.delivery { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
-    .type-box.pickup { background: #fef9c3; color: #854d0e; border: 1px solid #fef08a; }
-    .view-live-timer { background: #fff8e5; border: 2px solid #ffb900; color: #c45100; padding: 10px 20px; border-radius: 8px; font-family: monospace; font-size: 20px; font-weight: 900; display: inline-flex; align-items: center; gap: 8px; margin-top:10px; }
-    .view-live-timer.timer-late { background: #fcf0f1; color: #d63638; border-color: #d63638; animation: afd-pulse 1s infinite; }
-    @keyframes afd-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
-    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-    .readonly-text { font-size: 14px; font-weight: 600; color: #1e293b; padding: 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; word-break: break-all; }
-</style>
-
 <div class="edit-order-wrap">
     <form method="post" id="master-edit-form">
         <?php wp_nonce_field('afon_update_order_action', 'afon_update_order_nonce'); ?>
@@ -250,37 +213,82 @@ $invoice_url = $base_url . '&action=print&type=customer';
                     <div class="view-card-body" style="padding:0;">
                         <table class="view-table" id="items-table">
                             <thead>
-                                <tr><th>Item Description</th><th width="120">Price</th><th width="80">Qty</th><th width="100" style="text-align:right;">Subtotal</th><th width="40"></th></tr>
+                                <tr><th>Item Description</th><th>Variant</th><th width="120">Price</th><th width="80">Qty</th><th width="100" style="text-align:right;">Subtotal</th><th width="40"></th></tr>
                             </thead>
                             <tbody>
-                                <?php if(!empty($afon_items)): foreach($afon_items as $item): ?>
-                                    <tr class="item-row">
-                                        <td><input type="text" name="afon_items_name[]" value="<?php echo esc_attr($item['name']); ?>" class="edit-input"></td>
-                                        <td><div class="input-with-symbol"><span>£</span><input type="number" step="0.01" name="afon_items_price[]" value="<?php echo number_format($item['price'], 2, '.', ''); ?>" class="edit-input price-trigger"></div></td>
-                                        <td><input type="number" name="afon_items_qty[]" value="<?php echo intval($item['qty']); ?>" class="edit-input qty-trigger"></td>
-                                        <td style="text-align:right; font-weight:700;">£<span class="row-subtotal"><?php echo number_format($item['qty'] * $item['price'], 2); ?></span></td>
-                                        <td style="text-align:center;"><span class="dashicons dashicons-trash remove-item" style="color:red; cursor:pointer;"></span></td>
-                                    </tr>
-                                <?php endforeach; endif; ?>
-                            </tbody>
+    <?php if(!empty($afon_items)): foreach($afon_items as $item): 
+        $vPrice = isset($item['vPrice']) ? (float)$item['vPrice'] : 0;
+        $basePrice = isset($item['price']) ? (float)$item['price'] : 0;
+        $qty = intval($item['qty']);
+        $row_total = ($basePrice + $vPrice) * $qty;
+    ?>
+        <tr class="item-row">
+            <td><input type="text" name="afon_items_name[]" value="<?php echo esc_attr($item['name']); ?>" class="edit-input"></td>
+            
+            <td>
+    <div style="display:flex; flex-direction:column; gap:5px;">
+        <input type="text" name="afon_items_vname[]" value="<?php echo esc_attr($item['vName'] ?? ''); ?>" placeholder="Variant (e.g. Large)" class="edit-input" style="font-size:12px; padding:5px;">
+        <div class="input-with-symbol">
+            <input type="number" step="1" name="afon_items_vprice[]" value="<?php echo number_format($vPrice, 2, '.', ''); ?>" class="edit-input variant-trigger">
+        </div>
+    </div>
+</td>
+
+            <td>
+                <div class="input-with-symbol">
+                    <span>£</span>
+                    <input type="number" step="0.01" name="afon_items_price[]" value="<?php echo number_format($basePrice, 2, '.', ''); ?>" class="edit-input price-trigger">
+                </div>
+            </td>
+
+            <td><input type="number" name="afon_items_qty[]" value="<?php echo $qty; ?>" class="edit-input qty-trigger"></td>
+
+            <td style="text-align:right; font-weight:700;">
+                £<span class="row-subtotal"><?php echo number_format($row_total, 2, '.', ''); ?></span>
+            </td>
+
+            <td style="text-align:center;"><span class="dashicons dashicons-trash remove-item" style="color:red; cursor:pointer;"></span></td>
+        </tr>
+    <?php endforeach; endif; ?>
+</tbody>
                         </table>
 
                         <div style="padding:25px; background:#fcfcfd; border-top:1px solid var(--clr-border);">
                             <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:20px; margin-bottom:20px;">
-                                <div><label class="field-label">Delivery Fee</label><div class="input-with-symbol"><span>£</span><input type="number" step="0.01" name="afon_delivery_fee" value="<?php echo number_format($order->delivery_fee, 2, '.', ''); ?>" class="edit-input charge-trigger"></div></div>
-                                <div><label class="field-label">Service Fee</label><div class="input-with-symbol"><span>£</span><input type="number" step="0.01" id="afon_service_fee" value="<?php echo number_format($service_fee_val, 2, '.', ''); ?>" class="edit-input charge-trigger"></div></div>
-                                <div><label class="field-label">Bag Fee</label><div class="input-with-symbol"><span>£</span><input type="number" step="0.01" id="afon_bag_fee" value="<?php echo number_format($bag_fee_val, 2, '.', ''); ?>" class="edit-input charge-trigger"></div></div>
+                                <div><label class="field-label">Delivery Fee</label><div class="input-with-symbol"><span>£</span><input type="number" step="1" name="afon_delivery_fee" value="<?php echo number_format($order->delivery_charge, 2, '.', ''); ?>" class="edit-input charge-trigger"></div></div>
+                                <div>
+    <label class="field-label">Service Fee</label>
+    <div class="input-with-symbol">
+        <span>£</span>
+        <input type="number" step="1" name="afon_service_fee" id="afon_service_fee" value="<?php echo number_format($order->service_fee, 2, '.', ''); ?>" class="edit-input charge-trigger">
+    </div>
+</div>
+
+<div>
+    <label class="field-label">Bag Fee</label>
+    <div class="input-with-symbol">
+        <span>£</span>
+        <input type="number" step="1" name="afon_bag_fee" id="afon_bag_fee" value="<?php echo number_format($order->bag_fee, 2, '.', ''); ?>" class="edit-input charge-trigger">
+    </div>
+</div>
                                 
-                                <div><label class="field-label">Discount (%)</label><input type="number" step="0.01" id="afon_discount_pct" value="<?php echo $discount_pct; ?>" class="edit-input charge-trigger"></div>
-                                <div><label class="field-label">Discount Value (£)</label><div class="input-with-symbol"><span>£</span><input type="number" step="0.01" id="afon_discount_amt" value="0.00" class="edit-input" style="color:#16a34a; font-weight:700;"></div></div>
+                               <div>
+    <label class="field-label">Discount Value (£)</label>
+    <div class="input-with-symbol">
+        <span>£</span>
+        <input type="number" step="0.01" name="afon_discount_amt" id="afon_discount_amt" 
+               value="<?php echo number_format($order->delivery_discount, 2, '.', ''); ?>" 
+               class="edit-input discount-trigger">
+    </div>
+</div>
                                 
-                                <div><label class="field-label">Driver Tip</label><div class="input-with-symbol"><span>£</span><input type="number" step="0.01" name="afon_tip_amount" value="<?php echo number_format($order->tip_amount, 2, '.', ''); ?>" class="edit-input charge-trigger"></div></div>
+                                <div><label class="field-label">Driver Tip</label><div class="input-with-symbol"><span>£</span><input type="number" step="1" name="afon_tip_amount" value="<?php echo number_format($order->tip_amount, 2, '.', ''); ?>" class="edit-input charge-trigger"></div></div>
                             </div>
                             
                             <div class="grand-total-box">
                                 <label class="field-label">Final Amount to Pay</label>
                                 <span style="font-size:32px; font-weight:900; color:var(--clr-primary);">£</span>
-                                <input type="number" step="0.01" name="afon_total_price" id="final-total" class="final-price-input" value="<?php echo number_format(floatval($order->total_price), 2, '.', ''); ?>" readonly>
+                                <input type="number" step="1" name="afon_total_price" id="final-total" class="final-price-input" value="<?php echo number_format(floatval($order->total_price), 2, '.', ''); ?>" readonly>
                             </div>
                         </div>
                     </div>
@@ -343,36 +351,65 @@ $invoice_url = $base_url . '&action=print&type=customer';
                 </div>
 
                 <div class="view-card">
-                    <div class="view-card-header"><h2>Customer Details</h2></div>
-                    <div class="view-card-body">
-                        <label class="field-label">Name</label>
-                        <div class="readonly-text" style="margin-bottom:10px;"><?php echo esc_html($order->full_name); ?></div>
-                        
-                        <label class="field-label">Phone</label>
-                        <div class="readonly-text" style="margin-bottom:10px; color:var(--clr-blue);"><?php echo esc_html($order->phone); ?></div>
-                        
-                        <!-- <label class="field-label">Email</label>
-                        <div class="readonly-text" style="margin-bottom:10px;"><?php //echo esc_html($order->customer_email ?: '-'); ?></div> -->
+    <div class="view-card-header"><h2>Customer Details</h2></div>
+    <div class="view-card-body">
+        <?php 
+        // 1. Set Defaults from the Order Object
+        $final_name  = $order->full_name;
+        $final_phone = $order->phone;
+        
+        // 2. Address Fallbacks (u_ variables)
+        // If the 'u_' variables are empty, use the $order object columns
+        $disp_flat     = !empty($u_flat)     ? $u_flat     : ($order->flat_no ?? '-');
+        $disp_door     = !empty($u_door)     ? $u_door     : ($order->door_no ?? '-');
+        $disp_building = !empty($u_building) ? $u_building : ($order->building_name ?? '-');
+        $disp_road     = !empty($u_road)     ? $u_road     : ($order->road_name ?? '-');
+        $disp_post     = !empty($order->postcode) ? $order->postcode : ($u_postcode ?? '-');
 
-                        <!-- <label class="field-label">Order Notes</label>
-                        <div class="readonly-text" style="margin-bottom:10px;"><?php //echo esc_html($order->customer_notes); ?></div> -->
-                        
-                        <div class="type-box <?php echo $order_type; ?>">
-                            <?php echo strtoupper($order_type); ?>
-                        </div>
+        // 3. Optional: Override with Customer Meta ONLY if customer_id is not 0
+        if (!empty($order->customer_id) && $order->customer_id > 0) {
+            $user_meta_phone = get_user_meta($order->customer_id, 'billing_phone', true);
+            $user_data       = get_userdata($order->customer_id);
+            
+            if (!empty($user_data->display_name)) { $final_name = $user_data->display_name; }
+            if (!empty($user_meta_phone)) { $final_phone = $user_meta_phone; }
+        }
+        ?>
 
-                        <?php if ($order_type === 'delivery'): ?>
-                        <div class="addr-pill">
-                            <div class="addr-row"><span>Flat:</span> <span class="addr-val"><?php echo esc_html($u_flat ?: '-'); ?></span></div>
-                            <div class="addr-row"><span>Door:</span> <span class="addr-val"><?php echo esc_html($u_door ?: '-'); ?></span></div>
-                            <div class="addr-row"><span>Building:</span> <span class="addr-val"><?php echo esc_html($u_building ?: '-'); ?></span></div>
-                            <div class="addr-row"><span>Road:</span> <span class="addr-val"><?php echo esc_html($u_road ?: '-'); ?></span></div>
-                            <div class="addr-row"><span>Postcode:</span> <span class="addr-val" style="font-weight:900; color:var(--clr-primary);"><?php echo esc_html($order->postcode ?: $u_postcode); ?></span></div>
-                            <button type="button" onclick="copyToClipboard('<?php echo esc_js($full_address_string); ?>')" class="btn-action" style="width:100%; margin-top:10px; justify-content:center;">📋 Copy Full Address</button>
-                        </div>
-                        <?php endif; ?>
-                    </div>
-                </div>
+        <label class="field-label">Name</label>
+        <div class="readonly-text" style="margin-bottom:10px;">
+            <?php echo esc_html($final_name ?: 'Guest'); ?>
+        </div>
+        
+        <label class="field-label">Phone</label>
+        <div class="readonly-text" style="margin-bottom:10px; color:var(--clr-blue); font-weight:700;">
+            <?php echo esc_html($final_phone ?: '-'); ?>
+        </div>
+
+        <label class="field-label">Email</label>
+        <div class="readonly-text" style="margin-bottom:10px;font-weight:700;">
+            <?php echo esc_html($order->email); ?>
+        </div>
+        
+        <div class="type-box <?php echo esc_attr($order_type); ?>">
+            <?php echo strtoupper(esc_html($order_type)); ?>
+        </div>
+
+        <?php if ($order_type === 'delivery'): ?>
+        <div class="addr-pill">
+            <div class="addr-row"><span>Flat:</span> <span class="addr-val"><?php echo esc_html($disp_flat); ?></span></div>
+            <div class="addr-row"><span>Door:</span> <span class="addr-val"><?php echo esc_html($disp_door); ?></span></div>
+            <div class="addr-row"><span>Building:</span> <span class="addr-val"><?php echo esc_html($disp_building); ?></span></div>
+            <div class="addr-row"><span>Road:</span> <span class="addr-val"><?php echo esc_html($disp_road); ?></span></div>
+            <div class="addr-row"><span>Postcode:</span> <span class="addr-val" style="font-weight:900; color:var(--clr-primary);"><?php echo strtoupper(esc_html($disp_post)); ?></span></div>
+            
+            <button type="button" onclick="copyToClipboard('<?php echo esc_js($full_address_string); ?>')" class="btn-action" style="width:100%; margin-top:10px; justify-content:center;">
+                📋 Copy Full Address
+            </button>
+        </div>
+        <?php endif; ?>
+    </div>
+</div>
 
                 <div class="view-card" style="border:1px solid #f5c2c7; background:#fff8f8;">
                     <div class="view-card-body" style="text-align:center;">
@@ -388,7 +425,7 @@ $invoice_url = $base_url . '&action=print&type=customer';
 
 <script>
 jQuery(document).ready(function($) {
-    // --- Timer Script ---
+    // --- 1. Timer Logic ---
     var serverTime = <?php echo $server_now; ?>;
     var browserTime = Math.floor(Date.now() / 1000);
     var timeGap = serverTime - browserTime;
@@ -399,67 +436,92 @@ jQuery(document).ready(function($) {
         if (timerEl.length) {
             var expiry = parseInt(timerEl.data('expiry'));
             var diff = expiry - now;
-            if (diff <= 0) { timerEl.addClass('timer-late').find('.time-string').text("LATE"); } 
-            else {
+            if (diff <= 0) { 
+                timerEl.addClass('timer-late').find('.time-string').text("LATE"); 
+            } else {
                 var m = Math.floor(diff / 60), s = diff % 60;
                 timerEl.find('.time-string').text((m < 10 ? "0"+m : m) + ":" + (s < 10 ? "0"+s : s));
             }
         }
     }
-    setInterval(updateViewClock, 1000); updateViewClock();
+    setInterval(updateViewClock, 1000); 
+    updateViewClock();
 
-    // --- Financial Calculator ---
-    function calculate(triggerSource) {
-        let itemsTotal = 0;
-        $('.item-row').each(function() {
-            let p = parseFloat($(this).find('.price-trigger').val()) || 0;
-            let q = parseFloat($(this).find('.qty-trigger').val()) || 0;
-            let s = p * q;
-            $(this).find('.row-subtotal').text(s.toFixed(2));
-            itemsTotal += s;
-        });
+    function calculate() {
+    let itemsSubtotal = 0;
 
-        let delivery = parseFloat($('input[name="afon_delivery_fee"]').val()) || 0;
-        let service = parseFloat($('#afon_service_fee').val()) || 0;
-        let bag = parseFloat($('#afon_bag_fee').val()) || 0;
-        let tip = parseFloat($('input[name="afon_tip_amount"]').val()) || 0;
-        let dPct = parseFloat($('#afon_discount_pct').val()) || 0;
-        let dAmt = parseFloat($('#afon_discount_amt').val()) || 0;
+    $('.item-row').each(function() {
+        // Get values from the current row
+        let basePrice    = parseFloat($(this).find('.price-trigger').val()) || 0;
+        let variantPrice = parseFloat($(this).find('.variant-trigger').val()) || 0;
+        let qty          = parseFloat($(this).find('.qty-trigger').val()) || 0;
 
-        if(triggerSource !== 'amt') {
-            dAmt = (itemsTotal * dPct) / 100;
-            $('#afon_discount_amt').val(dAmt.toFixed(2));
-        } else {
-            if(itemsTotal > 0) {
-                dPct = (dAmt / itemsTotal) * 100;
-                $('#afon_discount_pct').val(dPct.toFixed(2));
-            }
-        }
-        let finalTotal = (itemsTotal + delivery + service + bag + tip) - dAmt;
-        $('#final-total').val(finalTotal.toFixed(2));
-    }
-    $(document).on('input', '.price-trigger, .qty-trigger, .charge-trigger, #afon_discount_pct', function() { calculate('pct'); });
-    $(document).on('input', '#afon_discount_amt', function() { calculate('amt'); });
+        // Formula: (Variant + Base) * Qty
+        let rowTotal = (basePrice + variantPrice) * qty;
+        
+        // Update row display
+        $(this).find('.row-subtotal').text(rowTotal.toFixed(2));
+        
+        itemsSubtotal += rowTotal;
+    });
 
-    // Dynamic Row Logic
+    // Collect Fees (Delivery, Service, etc.)
+    let delivery = parseFloat($('input[name="afon_delivery_fee"]').val()) || 0;
+    let service  = parseFloat($('#afon_service_fee').val()) || 0;
+    let bag      = parseFloat($('#afon_bag_fee').val()) || 0;
+    let tip      = parseFloat($('input[name="afon_tip_amount"]').val()) || 0;
+    let discount = parseFloat($('#afon_discount_amt').val()) || 0;
+
+    // Final Total: (Items - Discount) + Fees
+    let finalTotal = (itemsSubtotal - discount) + delivery + service + bag + tip;
+    
+    if (finalTotal < 0) finalTotal = 0;
+
+    $('#final-total').val(finalTotal.toFixed(2));
+}
+
+// Update the Event Listener to include .variant-trigger
+$(document).on('input change', '.price-trigger, .variant-trigger, .qty-trigger, .charge-trigger, #afon_discount_amt', function() { 
+    calculate(); 
+});
+
+    // --- 4. Dynamic Row Logic ---
     $('#add-new-item').click(function() {
-        let row = `<tr class="item-row">
-            <td><input type="text" name="afon_items_name[]" class="edit-input" placeholder="Item name"></td>
-            <td><div class="input-with-symbol"><span>£</span><input type="number" step="0.01" name="afon_items_price[]" value="0.00" class="edit-input price-trigger"></div></td>
-            <td><input type="number" name="afon_items_qty[]" value="1" class="edit-input qty-trigger"></td>
-            <td style="text-align:right; font-weight:700;">£<span class="row-subtotal">0.00</span></td>
-            <td style="text-align:center;"><span class="dashicons dashicons-trash remove-item" style="color:red; cursor:pointer;"></span></td>
-        </tr>`;
+        let row = `
+<tr class="item-row">
+    <td><input type="text" name="afon_items_name[]" class="edit-input" placeholder="Item name"></td>
+    <td>
+        <div class="input-with-symbol">
+            <span>+£</span>
+            <input type="number" step="0.01" name="afon_items_vprice[]" value="0.00" class="edit-input variant-trigger">
+        </div>
+    </td>
+    <td>
+        <div class="input-with-symbol">
+            <span>£</span>
+            <input type="number" step="0.01" name="afon_items_price[]" value="0.00" class="edit-input price-trigger">
+        </div>
+    </td>
+    <td><input type="number" name="afon_items_qty[]" value="1" class="edit-input qty-trigger"></td>
+    <td style="text-align:right; font-weight:700;">£<span class="row-subtotal">0.00</span></td>
+    <td style="text-align:center;"><span class="dashicons dashicons-trash remove-item" style="color:red; cursor:pointer;"></span></td>
+</tr>`;
         $('#items-table tbody').append(row);
-        calculate('pct');
+        calculate();
     });
 
     $(document).on('click', '.remove-item', function() {
-        if($('.item-row').length > 1) { $(this).closest('tr').remove(); calculate('pct'); }
+        if ($('.item-row').length > 1) { 
+            $(this).closest('tr').remove(); 
+            calculate(); 
+        }
     });
-    calculate('pct');
+
+    // Run on page load to initialize totals
+    calculate();
 });
 
+// --- 5. Utility Functions ---
 function copyToClipboard(text) {
     var dummy = document.createElement("textarea");
     document.body.appendChild(dummy);
@@ -470,3 +532,46 @@ function copyToClipboard(text) {
     alert("Address copied to clipboard!");
 }
 </script>
+
+<style>
+    :root { --clr-primary: #ef4444; --clr-blue: #2563eb; --clr-border: #e2e8f0; --clr-dark: #1e293b; --res-red: #d63638; }
+    .edit-order-wrap { margin: 20px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    .view-grid { display: grid; grid-template-columns: 1fr 280px; gap: 25px; }
+    .view-card { background: #fff; border: 1px solid var(--clr-border); border-radius: 12px; overflow: hidden; margin-bottom: 25px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .view-card-header { padding: 15px 20px; background: #f8fafc; border-bottom: 1px solid var(--clr-border); display: flex; align-items: center; justify-content: space-between; }
+    .view-card-header h2 { margin: 0; font-size: 11px; font-weight: 800; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px; }
+    .view-card-body { padding: 20px; }
+    .edit-input { width: 100%; border: 1px solid var(--clr-border); border-radius: 8px; padding: 10px; font-size: 14px; }
+    label.field-label { font-size: 11px; font-weight: 800; color: #64748b; display: block; margin-bottom: 6px; text-transform: uppercase; }
+    .view-table { width: 100%; border-collapse: collapse; }
+    .view-table th { text-align: left; padding: 12px; background: #f8fafc; font-size: 11px; border-bottom: 1px solid var(--clr-border); color: #64748b; }
+    .view-table td { padding: 12px; border-bottom: 1px solid #f1f5f9; }
+    .input-with-symbol { position: relative; display: flex; align-items: center; }
+    .input-with-symbol span { position: absolute; left: 12px; font-weight: 700; color: #94a3b8; }
+    .input-with-symbol input { padding-left: 28px; font-weight: 600; }
+    .btn-v { text-decoration: none; padding: 8px 15px; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer; border: 1px solid #ccd0d4; background: #fff; }
+    .btn-save { background: var(--clr-primary); color: #fff; border: none; width: 100%; height: 50px; font-size: 15px; border-radius: 10px; cursor: pointer; font-weight: 700;}
+    .btn-action { text-decoration: none; padding: 10px 15px; border-radius: 8px; font-weight: 700; font-size: 13px; display: inline-flex; align-items: center; gap: 8px; border: 1px solid #ccd0d4; background: #fff; color: #2c3338; cursor: pointer; }
+    .btn-delete { color: var(--res-red); border-color: #f5c2c7; background: #fff8f8; }
+    .grand-total-box { text-align: right; border-top: 2px solid var(--clr-dark); padding-top: 15px; }
+    .final-price-input { font-size: 32px; font-weight: 900; color: var(--clr-primary); text-align: right; border: none; background: transparent; width: 180px; pointer-events: none; }
+    .addr-pill { background: #f1f5f9; padding: 15px; border-radius: 10px; border: 1px solid var(--clr-border); margin-top: 10px; font-size: 13px;}
+    .addr-row { display: flex; justify-content: space-between; border-bottom: 1px solid #e2e8f0; padding: 6px 0; }
+    .addr-val { font-weight: 500; text-align: right; }
+    .type-box { display: block; width: 100%; text-align: center; padding: 10px; border-radius: 8px; font-weight: 800; font-size: 14px; margin-top: 10px; }
+    .type-box.delivery { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+    .type-box.pickup { background: #fef9c3; color: #854d0e; border: 1px solid #fef08a; }
+    .view-live-timer { background: #fff8e5; border: 2px solid #ffb900; color: #c45100; padding: 10px 20px; border-radius: 8px; font-family: monospace; font-size: 20px; font-weight: 900; display: inline-flex; align-items: center; gap: 8px; margin-top:10px; }
+    .view-live-timer.timer-late { background: #fcf0f1; color: #d63638; border-color: #d63638; animation: afd-pulse 1s infinite; }
+    @keyframes afd-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+    .readonly-text { font-size: 14px; font-weight: 600; color: #1e293b; padding: 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; word-break: break-all; }
+        body { font-family: sans-serif; padding: 20px; color: #333; }
+        .invoice-box { max-width: 800px; margin: auto; border: 1px solid #eee; padding: 30px; }
+        .invoice-box table { width: 100%; text-align: left; border-collapse: collapse; margin-top: 20px; }
+        .invoice-box table td, .invoice-box table th { padding: 10px; border-bottom: 1px solid #eee; }
+        .invoice-box table th { background: #f9f9f9; }
+        .total-row { font-weight: bold; font-size: 1.2em; border-top: 2px solid #333; }
+        .no-print { background: #2271b1; color: white; padding: 10px 20px; border: none; cursor: pointer; text-decoration: none; border-radius: 4px; display: inline-block; margin-bottom: 20px;}
+        @media print { .no-print { display: none; } }
+    </style>

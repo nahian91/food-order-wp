@@ -37,7 +37,7 @@ $rest_discount_pct = (float)get_option('afd_restaurant_discount', '0.00');
 $discount_amount   = ($order->subtotal * $rest_discount_pct) / 100;
 
 // Get Charges from Order Table
-$delivery_fee  = (float)$order->delivery_fee;
+$delivery_charge  = (float)$order->delivery_charge;
 $service_fee   = (float)$order->service_fee;
 $bag_fee       = (float)$order->bag_fee;
 $tip_amount    = (float)$order->tip_amount;
@@ -170,7 +170,7 @@ $nav_addr = ($meta_flat ? "Flat $meta_flat, " : "") . ($meta_door ? "$meta_door 
                     <div class="summary-line"><label>Service Charge (£)</label><span>£<?php echo number_format($service_fee, 2); ?></span></div>
                     
                     <?php if($order_type === 'delivery'): ?>
-                    <div class="summary-line"><label>Delivery Charge (£)</label><span>£<?php echo number_format($delivery_fee, 2); ?></span></div>
+                    <div class="summary-line"><label>Delivery Charge (£)</label><span>£<?php echo number_format($delivery_charge, 2); ?></span></div>
                     <?php endif; ?>
 
                     <div class="summary-line"><label>Bag Charge (£)</label><span>£<?php echo number_format($bag_fee, 2); ?></span></div>
@@ -210,62 +210,104 @@ $nav_addr = ($meta_flat ? "Flat $meta_flat, " : "") . ($meta_door ? "$meta_door 
             <?php endif; ?>
 
         </div>
-
         <div class="sidebar-column">
-            <div class="view-card">
-                <div class="view-card-header"><h2>Customer Details</h2></div>
-                <div class="view-card-body">
-                    <div class="info-block"><label>Full Name</label><p><?php echo esc_html($order->full_name); ?></p></div>
-                    <div class="info-block"><label>Phone Number</label><p style="color:var(--res-red); font-size:18px; font-weight:800;"><?php echo esc_html($order->phone); ?></p></div>
-                    <div class="info-block"><label>Email Address</label><p><?php echo esc_html($order->email); ?></p></div>
-                    
-                    <hr style="border:0; border-top:1px solid #eee; margin:20px 0;">
 
-                    <div class="info-block">
-                        <label>Payment Method</label>
-                        <p style="text-transform:uppercase; color:var(--res-success); font-weight:800;"><?php echo esc_html($order->payment_method); ?></p>
-                        <div class="type-box <?php echo $order_type; ?>">
-                            <span class="dashicons dashicons-<?php echo ($order_type === 'delivery') ? 'location' : 'store'; ?>" style="font-size:18px; margin-top:2px; vertical-align: middle;"></span>
-                            <?php echo strtoupper($order_type); ?>
-                        </div>
-                    </div>
+       
+    <div class="view-card">
+        <div class="view-card-header"><h2>Customer Details</h2></div>
+        <div class="view-card-body">
+            <?php 
+            // 1. Initialize variables with Order data as the default
+            $display_name  = $order->full_name;
+            $display_phone = $order->phone;
+            $display_email = $order->email;
 
-                    <hr style="border:0; border-top:1px solid #eee; margin:20px 0;">
+            // 2. If customer_id > 0, try to override with official Customer Profile data
+            if (!empty($order->customer_id) && $order->customer_id > 0) {
+                $user_id = $order->customer_id;
+                
+                // Fetching standard WP User Meta (adjust keys if you use custom ones)
+                $meta_first = get_user_meta($user_id, 'first_name', true);
+                $meta_last  = get_user_meta($user_id, 'last_name', true);
+                $meta_phone = get_user_meta($user_id, 'billing_phone', true); // Common key
+                $user_data  = get_userdata($user_id);
 
-                    <div class="info-block">
-                        <label>Location Details</label>
-                        <?php if ($order_type === 'delivery'): ?>
-                        <div class="addr-pill">
-                            <div class="addr-row"><span>Flat No.</span> <span><?php echo esc_html($meta_flat ?: '-'); ?></span></div>
-                            <div class="addr-row"><span>Building</span> <span><?php echo esc_html($meta_building ?: '-'); ?></span></div>
-                            <div class="addr-row"><span>Door No.</span> <span><?php echo esc_html($meta_door ?: '-'); ?></span></div>
-                            <div class="addr-row"><span>Road Name</span> <span><?php echo esc_html($meta_road ?: '-'); ?></span></div>
-                            <div class="addr-row" style="border:0; margin-top:10px;">
-                                <span>Postcode</span> 
-                                <span style="font-size:18px; color:var(--res-red); font-weight:900;"><?php echo strtoupper(esc_html($meta_postcode ?: $order->postcode)); ?></span>
-                            </div>
-                            <button onclick="copyToClipboard('<?php echo esc_js($nav_addr); ?>')" class="btn-action" style="width:100%; margin-top:15px; justify-content:center;">
-                                <span class="dashicons dashicons-admin-page"></span> Copy for Navigation
-                            </button>
-                        </div>
-                        <?php else: ?>
-                            <div style="text-align:center; padding:15px; border: 2px dashed #fbbf24; border-radius:12px; background:#fffdf2;">
-                                <span class="dashicons dashicons-store" style="font-size:30px; color:#b45309;"></span>
-                                <div style="font-weight:800; color:#b45309; margin-top:5px;">STORE PICKUP</div>
-                            </div>
-                        <?php endif; ?>
-                    </div>
+                if (!empty($meta_first)) { $display_name = $meta_first . ' ' . $meta_last; }
+                if (!empty($meta_phone)) { $display_phone = $meta_phone; }
+                if (!empty($user_data->user_email)) { $display_email = $user_data->user_email; }
+            }
+            ?>
+
+            <div class="info-block">
+                <label>Full Name</label>
+                <p><?php echo esc_html($display_name ?: 'Guest'); ?></p>
+            </div>
+            
+            <div class="info-block">
+                <label>Phone Number</label>
+                <p style="color:var(--res-red); font-size:18px; font-weight:800;">
+                    <?php echo esc_html($display_phone ?: '-'); ?>
+                </p>
+            </div>
+            
+            <div class="info-block">
+                <label>Email Address</label>
+                <p><?php echo esc_html($display_email ?: '-'); ?></p>
+            </div>
+            
+            <hr style="border:0; border-top:1px solid #eee; margin:20px 0;">
+
+            <div class="info-block">
+                <label>Payment Method</label>
+                <p style="text-transform:uppercase; color:var(--res-success); font-weight:800;">
+                    <?php echo esc_html($order->payment_method); ?> (<?php echo esc_html($order->payment_status); ?>)
+                </p>
+                <div class="type-box <?php echo esc_attr($order->order_type); ?>">
+                    <span class="dashicons dashicons-<?php echo ($order->order_type === 'delivery') ? 'location' : 'store'; ?>" style="font-size:18px; margin-top:2px; vertical-align: middle;"></span>
+                    <?php echo strtoupper(esc_html($order->order_type)); ?>
                 </div>
             </div>
 
-            <div class="view-card" style="border:1px solid #f5c2c7; background:#fff8f8;">
-                <div class="view-card-body" style="text-align:center;">
-                    <a href="<?php echo $delete_url; ?>" class="btn-action" style="color:#d63638; border-color:#f5c2c7; width:100%; justify-content:center;" onclick="return confirm('Delete this order permanently?')">
-                        <span class="dashicons dashicons-trash"></span> Delete Order
-                    </a>
+            <hr style="border:0; border-top:1px solid #eee; margin:20px 0;">
+
+            <div class="info-block">
+                <label>Location Details</label>
+                <?php if ($order->order_type === 'delivery'): ?>
+                <div class="addr-pill">
+                    <?php 
+                    $address_fields = [
+                        'Flat No.'  => $order->flat_no,
+                        'Building'  => $order->building_name,
+                        'Door No.'  => $order->door_no,
+                        'Road Name' => $order->road_name,
+                    ];
+
+                    foreach ($address_fields as $label => $value) : ?>
+                        <?php if (!empty($value) && $value !== 'null') : ?>
+                        <div class="addr-row">
+                            <span><?php echo $label; ?></span> 
+                            <strong><?php echo esc_html($value); ?></strong>
+                        </div>
+                        <?php endif; ?>
+                    <?php endforeach; ?>
+
+                    <div class="addr-row" style="border:0; margin-top:10px;">
+                        <span>Postcode</span> 
+                        <span style="font-size:18px; color:var(--res-red); font-weight:900;">
+                            <?php echo strtoupper(esc_html($order->postcode)); ?>
+                        </span>
+                    </div>
                 </div>
+                <?php else: ?>
+                    <div style="text-align:center; padding:15px; border: 2px dashed #fbbf24; border-radius:12px; background:#fffdf2;">
+                        <span class="dashicons dashicons-store" style="font-size:30px; color:#b45309;"></span>
+                        <div style="font-weight:800; color:#b45309; margin-top:5px;">STORE PICKUP</div>
+                    </div>
+                <?php endif; ?>
             </div>
         </div>
+    </div>
+</div>
     </div>
 </div>
 

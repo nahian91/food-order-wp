@@ -16,7 +16,6 @@ if (!$order) {
 
 /**
  * 2. DATA HANDLING WITH SAFETY FALLBACKS
- * These prevent "Undefined property" warnings if table columns are missing.
  */
 $items          = json_decode($order->items_json ?? '[]', true) ?: [];
 $display_id     = !empty($order->display_id) ? $order->display_id : 'INV-' . $order->id;
@@ -28,7 +27,7 @@ $discount_val   = floatval($order->discount_amount ?? 0);
 $service_fee    = floatval($order->service_fee ?? 0);
 $bag_fee        = floatval($order->bag_fee ?? 0);
 $tip            = floatval($order->tip ?? 0);
-$delivery_fee   = floatval($order->delivery_fee ?? 0);
+$delivery_charge = floatval($order->delivery_charge ?? 0);
 $grand_total    = floatval($order->total_price ?? 0);
 
 // Customer Info
@@ -37,7 +36,7 @@ $cust_phone     = $order->phone ?? 'N/A';
 $cust_email     = $order->email ?? '';
 $cust_address   = $order->address ?? '';
 $order_type     = $order->order_type ?? 'delivery'; 
-$order_status   = $order->status ?? 'Confirmed'; // FIXED: Fallback for the warning you saw
+$order_status   = $order->status ?? 'Confirmed';
 $scheduled      = $order->scheduled_time ?? 'ASAP';
 $pay_method     = $order->payment_method ?? 'Cash';
 
@@ -91,6 +90,7 @@ $d_notes        = $order->delivery_notes ?? '';
         td { padding: 15px; border-bottom: 1px solid #f1f5f9; font-size: 14px; color: #334155; vertical-align: top; }
         .col-qty { text-align: center; font-weight: 700; width: 50px; }
         .col-total { text-align: right; font-weight: 700; color: #0f172a; width: 100px; }
+        .variant-text { display: block; font-size: 12px; color: #64748b; font-weight: 400; font-style: italic; }
 
         /* Footer Layout */
         .footer-layout { display: flex; justify-content: space-between; gap: 40px; }
@@ -149,7 +149,10 @@ $d_notes        = $order->delivery_notes ?? '';
             <div class="info-box">
                 <h3>Address</h3>
                 <p>
-                    <?php echo (strtolower($order_type) === 'pickup' || strtolower($order_type) === 'collection') ? 'Store Collection' : nl2br(esc_html($cust_address)); ?>
+                    <?php 
+                    $type_clean = strtolower($order_type);
+                    echo ($type_clean === 'pickup' || $type_clean === 'collection') ? 'Store Collection' : nl2br(esc_html($cust_address)); 
+                    ?>
                 </p>
             </div>
             <div class="info-box">
@@ -164,20 +167,30 @@ $d_notes        = $order->delivery_notes ?? '';
                 <tr>
                     <th class="col-qty">Qty</th>
                     <th>Item Description</th>
-                    <th style="text-align: right;">Price</th>
+                    <th style="text-align: right;">Unit Price</th>
                     <th class="col-total">Total</th>
                 </tr>
             </thead>
             <tbody>
                 <?php if(!empty($items)): foreach($items as $item): 
-                    $i_price = floatval($item['price'] ?? 0);
-                    $i_qty   = intval($item['qty'] ?? 1);
+                    $i_base_price = floatval($item['price'] ?? 0);
+                    $i_v_price    = floatval($item['vPrice'] ?? 0);
+                    $i_qty        = intval($item['qty'] ?? 1);
+                    
+                    // Calculation: (Base Price + Variant Price) * Quantity
+                    $unit_price   = $i_base_price + $i_v_price;
+                    $row_total    = $unit_price * $i_qty;
                 ?>
                 <tr>
                     <td class="col-qty"><?php echo $i_qty; ?>x</td>
-                    <td><strong><?php echo esc_html($item['name'] ?? 'Unknown Item'); ?></strong></td>
-                    <td style="text-align: right;">£<?php echo number_format($i_price, 2); ?></td>
-                    <td class="col-total">£<?php echo number_format($i_price * $i_qty, 2); ?></td>
+                    <td>
+                        <strong><?php echo esc_html($item['name'] ?? 'Unknown Item'); ?></strong>
+                        <?php if($i_v_price > 0): ?>
+                            <span class="variant-text">+ Variation/Extra: £<?php echo number_format($i_v_price, 2); ?></span>
+                        <?php endif; ?>
+                    </td>
+                    <td style="text-align: right;">£<?php echo number_format($unit_price, 2); ?></td>
+                    <td class="col-total">£<?php echo number_format($row_total, 2); ?></td>
                 </tr>
                 <?php endforeach; endif; ?>
             </tbody>
@@ -222,7 +235,7 @@ $d_notes        = $order->delivery_notes ?? '';
                 <?php if(strtolower($order_type) !== 'pickup' && strtolower($order_type) !== 'collection'): ?>
                 <div class="total-row">
                     <span>Delivery Fee</span>
-                    <span>£<?php echo number_format($delivery_fee, 2); ?></span>
+                    <span>£<?php echo number_format($delivery_charge, 2); ?></span>
                 </div>
                 <?php endif; ?>
                 <div class="total-row">
