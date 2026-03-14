@@ -314,18 +314,29 @@ jQuery(document).ready(function($){
         const isColl = $('#typePickup').is(':checked');
         const tipVal = parseFloat($('#tipInput').val()) || 0;
         
+        // Toggle visibility of the delivery address section
         $('#deliverySection').toggle(!isColl);
+        
+        // FIX: Toggle the 'required' attribute on address inputs
+        // This prevents the browser from blocking the form when inputs are hidden
+        $('#deliverySection').find('input').prop('required', !isColl);
+        
+        // Update the UI label for the fee
         $('#feeLabel').text(isColl ? 'Collection Fee' : 'Delivery Fee');
         
         let subtotal = 0;
         const $list = $('#uiItemList').empty();
         
+        // Handle empty cart state
         if(orderItems.length === 0) {
             $list.html('<p class="text-center py-4 text-muted">Your cart is empty.</p>');
             $('#mainSubmitBtn').prop('disabled', true);
             return;
+        } else {
+            $('#mainSubmitBtn').prop('disabled', false);
         }
 
+        // Render line items and calculate subtotal
         orderItems.forEach(item => {
             const basePrice = parseFloat(item.price) || 0;
             const variationPrice = parseFloat(item.vPrice) || 0;
@@ -346,11 +357,15 @@ jQuery(document).ready(function($){
             `);
         });
 
+        // Determine rates based on fulfillment type
         const discRate = isColl ? config.cDisc : config.dDisc;
         const activeFee = isColl ? config.cFee : config.dFee;
         const discAmt = (subtotal * discRate) / 100;
+        
+        // Final math: (Subtotal - Discount) + Fees + Tip
         const finalTotal = (subtotal - discAmt) + config.sFee + activeFee + config.bFee + tipVal;
 
+        // Update UI Values
         $('#valSub').text(subtotal.toFixed(2));
         $('#valDisc').text(discAmt.toFixed(2));
         $('#valFee').text(activeFee.toFixed(2));
@@ -416,4 +431,4 @@ jQuery(document).ready(function($){
 });
 </script>
 
-<?php get_header(); ?>
+<?php get_footer(); ?>

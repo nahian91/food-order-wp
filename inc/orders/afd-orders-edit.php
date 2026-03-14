@@ -15,44 +15,6 @@ if (!$afon_order_id) {
 }
 
 /*--------------------------------------------------------------
-# 0. INVOICE GENERATION LOGIC (PDF/Print)
---------------------------------------------------------------*/
-if (isset($_GET['action']) && $_GET['action'] === 'print' && isset($_GET['type']) && $_GET['type'] === 'customer') {
-    $order = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $afon_order_id));
-    if (!$order) wp_die('Order not found.');
-
-    $items = json_decode($order->items_json, true) ?: [];
-
-
-    echo '<div class="invoice-box">';
-    echo '<button class="no-print" onclick="window.print()">Print Invoice</button>';
-    echo '<h1>Invoice #' . esc_html(!empty($order->display_id) ? $order->display_id : 'REC-'.$order->id) . '</h1>';
-    echo '<p>Date: ' . esc_html($order->order_date) . '<br>';
-    echo 'Customer: ' . esc_html($order->full_name) . '<br>';
-    echo 'Phone: ' . esc_html($order->phone) . '<br>';
-    echo 'Email: ' . esc_html($order->customer_email) . '</p>';
-
-    echo '<table><thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody>';
-    foreach ($items as $item) {
-        echo '<tr>
-            <td>' . esc_html($item['name']) . '</td>
-            <td>' . intval($item['qty']) . '</td>
-            <td>£' . number_format($item['price'], 2) . '</td>
-            <td>£' . number_format($item['qty'] * $item['price'], 2) . '</td>
-        </tr>';
-    }
-    echo '</tbody><tfoot>
-        <tr><td colspan="3">Subtotal</td><td>£' . number_format($order->total_price - $order->delivery_fee - $order->tip_amount, 2) . '</td></tr>
-        <tr><td colspan="3">Delivery</td><td>£' . number_format($order->delivery_fee, 2) . '</td></tr>
-        <tr><td colspan="3">Tip</td><td>£' . number_format($order->tip_amount, 2) . '</td></tr>
-        <tr class="total-row"><td colspan="3">Total</td><td>£' . number_format($order->total_price, 2) . '</td></tr>
-    </tfoot></table>';
-    echo '</div>';
-    echo '<script>window.onload = function() { window.print(); }</script>';
-    exit;
-}
-
-/*--------------------------------------------------------------
 # 1. DELETE LOGIC
 --------------------------------------------------------------*/
 if (isset($_GET['action']) && $_GET['action'] === 'delete') {
@@ -64,23 +26,25 @@ if (isset($_GET['action']) && $_GET['action'] === 'delete') {
 }
 
 /*--------------------------------------------------------------
-# 2. DATABASE AUTO-REPAIR (Updated for Service & Bag Fees)
+# 2. DATABASE AUTO-REPAIR (Updated for Collection Charges/Discounts)
 --------------------------------------------------------------*/
 $required_columns = [
-    'kitchen_notes'   => "TEXT NOT NULL AFTER `address`",
-    'delivery_notes'  => "TEXT NOT NULL AFTER `kitchen_notes`",
-    'tip_amount'      => "DECIMAL(10,2) DEFAULT '0.00' AFTER `delivery_fee`",
-    'service_fee'     => "DECIMAL(10,2) DEFAULT '0.00' AFTER `tip_amount`", // ADDED
-    'bag_fee'         => "DECIMAL(10,2) DEFAULT '0.00' AFTER `service_fee`", // ADDED
-    'discount_amount' => "DECIMAL(10,2) DEFAULT '0.00' AFTER `tip_amount` ",
-    'delay_message'   => "TEXT NULL AFTER `scheduled_time`",
-    'postcode'        => "VARCHAR(20) NULL AFTER `address`",
-    'order_type'      => "VARCHAR(50) DEFAULT 'delivery' AFTER `order_status`",
-    'display_id'      => "VARCHAR(50) NULL AFTER `id`",
-    'payment_method'  => "VARCHAR(50) DEFAULT 'Cash' AFTER `total_price`",
-    'payment_status'  => "VARCHAR(50) DEFAULT 'Unpaid' AFTER `payment_method`",
-    'customer_email'  => "VARCHAR(100) NULL AFTER `phone`", 
-    'customer_notes'  => "TEXT NULL AFTER `delivery_notes`"
+    'kitchen_notes'       => "TEXT NOT NULL AFTER `address`",
+    'delivery_notes'      => "TEXT NOT NULL AFTER `kitchen_notes`",
+    'tip_amount'          => "DECIMAL(10,2) DEFAULT '0.00' AFTER `delivery_fee`",
+    'service_fee'         => "DECIMAL(10,2) DEFAULT '0.00' AFTER `tip_amount`",
+    'bag_fee'             => "DECIMAL(10,2) DEFAULT '0.00' AFTER `service_fee`",
+    'delivery_discount'   => "DECIMAL(10,2) DEFAULT '0.00' AFTER `tip_amount` ", // Ensure this matches your column name
+    'collection_charge'   => "DECIMAL(10,2) DEFAULT '0.00' AFTER `bag_fee` ",    // ADDED
+    'collection_discount' => "DECIMAL(10,2) DEFAULT '0.00' AFTER `collection_charge` ", // ADDED
+    'delay_message'       => "TEXT NULL AFTER `scheduled_time`",
+    'postcode'            => "VARCHAR(20) NULL AFTER `address`",
+    'order_type'          => "VARCHAR(50) DEFAULT 'delivery' AFTER `order_status`",
+    'display_id'          => "VARCHAR(50) NULL AFTER `id`",
+    'payment_method'      => "VARCHAR(50) DEFAULT 'Cash' AFTER `total_price`",
+    'payment_status'      => "VARCHAR(50) DEFAULT 'Unpaid' AFTER `payment_method`",
+    'customer_email'      => "VARCHAR(100) NULL AFTER `phone`", 
+    'customer_notes'      => "TEXT NULL AFTER `delivery_notes` text"
 ];
 
 foreach ($required_columns as $col => $definition) {
@@ -91,7 +55,7 @@ foreach ($required_columns as $col => $definition) {
 }
 
 /*--------------------------------------------------------------
-# 3. SAVE LOGIC (Fixed for persistence)
+# 3. SAVE LOGIC (Fixed for Collection & Persistence)
 --------------------------------------------------------------*/
 if (isset($_POST['afon_update_order'])) {
     check_admin_referer('afon_update_order_action', 'afon_update_order_nonce');
@@ -101,10 +65,11 @@ if (isset($_POST['afon_update_order'])) {
         foreach ($_POST['afon_items_name'] as $idx => $name) {
             if (!empty($name)) {
                 $afon_updated_items[] = [
-                    'name'  => sanitize_text_field($name),
-                    'qty'   => intval($_POST['afon_items_qty'][$idx]),
-                    'price' => floatval($_POST['afon_items_price'][$idx]), 
-                    'vPrice' => floatval($_POST['afon_items_vprice'][$idx])
+                    'name'   => sanitize_text_field($name),
+                    'qty'    => intval($_POST['afon_items_qty'][$idx]),
+                    'price'  => floatval($_POST['afon_items_price'][$idx]), 
+                    'vPrice' => floatval($_POST['afon_items_vprice'][$idx]),
+                    'vName'  => isset($_POST['afon_items_vname'][$idx]) ? sanitize_text_field($_POST['afon_items_vname'][$idx]) : ''
                 ];
             }
         }
@@ -116,24 +81,25 @@ if (isset($_POST['afon_update_order'])) {
     $new_order_date = date('Y-m-d H:i:s', $new_anchor_ts);
 
     $update_data = [
-        'kitchen_notes'   => isset($_POST['afon_kitchen_notes']) ? sanitize_textarea_field($_POST['afon_kitchen_notes']) : '',
-        'delivery_notes'  => isset($_POST['afon_delivery_notes']) ? sanitize_textarea_field($_POST['afon_delivery_notes']) : '',
-        'delay_message'   => isset($_POST['afon_delay_message']) ? sanitize_textarea_field($_POST['afon_delay_message']) : '', 
-        'order_status'    => sanitize_text_field($_POST['afon_status']),
-        'order_type'      => sanitize_text_field($_POST['afon_order_type']),
-        'items_json'      => json_encode($afon_updated_items),
-        'delivery_charge'    => floatval($_POST['afon_delivery_fee']),
-        'service_fee'     => floatval($_POST['afon_service_fee'] ?? 0), // SAVING SERVICE FEE
-        'bag_fee'         => floatval($_POST['afon_bag_fee'] ?? 0),     // SAVING BAG FEE
-        'delivery_discount' => floatval($_POST['afon_discount_amt'] ?? 0),
-'total_price'     => floatval($_POST['afon_total_price']), // This is the 'final-total' from JS
-        'tip_amount'      => floatval($_POST['afon_tip_amount']),
-        'total_price'     => floatval($_POST['afon_total_price']), 
-        'scheduled_time'  => $mins_input,
-        'order_date'      => $new_order_date,
-        'payment_method'  => sanitize_text_field($_POST['afon_payment_method']),
-        'payment_status'  => sanitize_text_field($_POST['afon_payment_status']),
-        'customer_notes'  => isset($_POST['afon_customer_notes']) ? sanitize_textarea_field($_POST['afon_customer_notes']) : '',
+        'kitchen_notes'       => isset($_POST['afon_kitchen_notes']) ? sanitize_textarea_field($_POST['afon_kitchen_notes']) : '',
+        'delivery_notes'      => isset($_POST['afon_delivery_notes']) ? sanitize_textarea_field($_POST['afon_delivery_notes']) : '',
+        'delay_message'       => isset($_POST['afon_delay_message']) ? sanitize_textarea_field($_POST['afon_delay_message']) : '', 
+        'order_status'        => sanitize_text_field($_POST['afon_status']),
+        'order_type'          => sanitize_text_field($_POST['afon_order_type']),
+        'items_json'          => json_encode($afon_updated_items),
+        'delivery_charge'     => floatval($_POST['afon_delivery_fee'] ?? 0),
+        'service_fee'         => floatval($_POST['afon_service_fee'] ?? 0),
+        'bag_fee'             => floatval($_POST['afon_bag_fee'] ?? 0),
+        'collection_charge'   => floatval($_POST['afon_collection_charge'] ?? 0), // SAVING COLLECTION CHARGE
+        'collection_discount' => floatval($_POST['afon_collection_discount'] ?? 0), // SAVING COLLECTION DISCOUNT
+        'delivery_discount'   => floatval($_POST['afon_discount_amt'] ?? 0),
+        'tip_amount'          => floatval($_POST['afon_tip_amount']),
+        'total_price'         => floatval($_POST['afon_total_price']), 
+        'scheduled_time'      => $mins_input,
+        'order_date'          => $new_order_date,
+        'payment_method'      => sanitize_text_field($_POST['afon_payment_method']),
+        'payment_status'      => sanitize_text_field($_POST['afon_payment_status']),
+        'customer_notes'      => isset($_POST['afon_customer_notes']) ? sanitize_textarea_field($_POST['afon_customer_notes']) : '',
     ];
 
     $wpdb->update($table_name, $update_data, ['id' => $afon_order_id]);
@@ -217,6 +183,7 @@ $invoice_url = $base_url . '&action=print&type=customer';
                             </thead>
                             <tbody>
     <?php if(!empty($afon_items)): foreach($afon_items as $item): 
+
         $vPrice = isset($item['vPrice']) ? (float)$item['vPrice'] : 0;
         $basePrice = isset($item['price']) ? (float)$item['price'] : 0;
         $qty = intval($item['qty']);
@@ -237,7 +204,7 @@ $invoice_url = $base_url . '&action=print&type=customer';
             <td>
                 <div class="input-with-symbol">
                     <span>£</span>
-                    <input type="number" step="0.01" name="afon_items_price[]" value="<?php echo number_format($basePrice, 2, '.', ''); ?>" class="edit-input price-trigger">
+                    <input type="number" step="1" name="afon_items_price[]" value="<?php echo number_format($basePrice, 2, '.', ''); ?>" class="edit-input price-trigger">
                 </div>
             </td>
 
@@ -255,12 +222,32 @@ $invoice_url = $base_url . '&action=print&type=customer';
 
                         <div style="padding:25px; background:#fcfcfd; border-top:1px solid var(--clr-border);">
                             <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:20px; margin-bottom:20px;">
-                                <div><label class="field-label">Delivery Fee</label><div class="input-with-symbol"><span>£</span><input type="number" step="1" name="afon_delivery_fee" value="<?php echo number_format($order->delivery_charge, 2, '.', ''); ?>" class="edit-input charge-trigger"></div></div>
+                                <?php if ($order_type === 'delivery') : ?>
+    <div id="delivery-fee-wrapper">
+        <label class="field-label">Delivery Fee</label>
+        <div class="input-with-symbol">
+            <span>£</span>
+            <input type="number" step="1" name="afon_delivery_fee" 
+                   value="<?php echo number_format($order->delivery_charge, 2, '.', ''); ?>" 
+                   class="edit-input charge-trigger">
+        </div>
+    </div>
+
+<?php elseif ($order_type === 'collection' || $order_type === 'pickup') : ?>
+    <div id="collection-fee-wrapper"> <label class="field-label">Collection Fee</label>
+        <div class="input-with-symbol">
+            <span>£</span>
+            <input type="number" step="1" name="afon_collection_fee" 
+                   value="<?php echo number_format($order->collection_charge, 2, '.', ''); ?>" 
+                   class="edit-input charge-trigger">
+        </div>
+    </div>
+<?php endif; ?>
                                 <div>
     <label class="field-label">Service Fee</label>
     <div class="input-with-symbol">
         <span>£</span>
-        <input type="number" step="1" name="afon_service_fee" id="afon_service_fee" value="<?php echo number_format($order->service_fee, 2, '.', ''); ?>" class="edit-input charge-trigger">
+        <input type="number" step="0.01" name="afon_service_fee" id="afon_service_fee" value="<?php echo number_format($order->service_fee, 2, '.', ''); ?>" class="edit-input charge-trigger">
     </div>
 </div>
 
@@ -268,27 +255,39 @@ $invoice_url = $base_url . '&action=print&type=customer';
     <label class="field-label">Bag Fee</label>
     <div class="input-with-symbol">
         <span>£</span>
-        <input type="number" step="1" name="afon_bag_fee" id="afon_bag_fee" value="<?php echo number_format($order->bag_fee, 2, '.', ''); ?>" class="edit-input charge-trigger">
+        <input type="number" step="0.01" name="afon_bag_fee" id="afon_bag_fee" value="<?php echo number_format($order->bag_fee, 2, '.', ''); ?>" class="edit-input charge-trigger">
     </div>
 </div>
                                 
-                               <div>
-    <label class="field-label">Discount Value (£)</label>
-    <div class="input-with-symbol">
-        <span>£</span>
-        <input type="number" step="0.01" name="afon_discount_amt" id="afon_discount_amt" 
-               value="<?php echo number_format($order->delivery_discount, 2, '.', ''); ?>" 
-               class="edit-input discount-trigger">
+                               <?php if ($order_type === 'delivery') : ?>
+    <div id="discount-wrapper">
+        <label class="field-label">Discount Value (£)</label>
+        <div class="input-with-symbol">
+            <span>£</span>
+            <input type="number" step="0.01" name="afon_discount_amt" id="afon_discount_amt" 
+                   value="<?php echo number_format($order->delivery_discount, 2, '.', ''); ?>" 
+                   class="edit-input discount-trigger">
+        </div>
     </div>
-</div>
+<?php else : ?>
+    <div id="discount-wrapper">
+        <label class="field-label">Discount Value (£)</label>
+        <div class="input-with-symbol">
+            <span>£</span>
+            <input type="number" step="0.01" name="afon_discount_amt" id="afon_discount_amt" 
+                   value="<?php echo number_format($order->collection_discount, 2, '.', ''); ?>" 
+                   class="edit-input discount-trigger">
+        </div>
+    </div>
+<?php endif; ?>
                                 
-                                <div><label class="field-label">Driver Tip</label><div class="input-with-symbol"><span>£</span><input type="number" step="1" name="afon_tip_amount" value="<?php echo number_format($order->tip_amount, 2, '.', ''); ?>" class="edit-input charge-trigger"></div></div>
+                                <div><label class="field-label">Driver Tip</label><div class="input-with-symbol"><span>£</span><input type="number" step="0.01" name="afon_tip_amount" value="<?php echo number_format($order->tip_amount, 2, '.', ''); ?>" class="edit-input charge-trigger"></div></div>
                             </div>
                             
                             <div class="grand-total-box">
                                 <label class="field-label">Final Amount to Pay</label>
                                 <span style="font-size:32px; font-weight:900; color:var(--clr-primary);">£</span>
-                                <input type="number" step="1" name="afon_total_price" id="final-total" class="final-price-input" value="<?php echo number_format(floatval($order->total_price), 2, '.', ''); ?>" readonly>
+                                <input type="number" step="0.01" name="afon_total_price" id="final-total" class="final-price-input" value="<?php echo number_format(floatval($order->total_price), 2, '.', ''); ?>" readonly>
                             </div>
                         </div>
                     </div>
@@ -332,9 +331,16 @@ $invoice_url = $base_url . '&action=print&type=customer';
                         
                         <label class="field-label">Order Type</label>
                         <select name="afon_order_type" class="edit-input" style="font-weight:700; height:45px; margin-bottom:20px;">
-                            <option value="delivery" <?php selected($order_type, 'delivery'); ?>>🚚 DELIVERY</option>
-                            <option value="pickup" <?php selected($order_type, 'pickup'); ?>>🏪 PICKUP</option>
-                        </select>
+    
+    <option value="delivery" <?php if($order_type === 'delivery') { echo 'selected'; } ?>>
+        🚚 DELIVERY
+    </option>
+
+    <option value="collection" <?php if($order_type === 'collection') { echo 'selected'; } ?>>
+        🏪 COLLECTION
+    </option>
+    
+</select>
 
                         <button type="submit" name="afon_update_order" class="btn-save">💾 SAVE ALL CHANGES</button>
                     </div>
@@ -425,7 +431,10 @@ $invoice_url = $base_url . '&action=print&type=customer';
 
 <script>
 jQuery(document).ready(function($) {
-    // --- 1. Timer Logic ---
+
+    /*--------------------------------------------------------------
+    # 1. TIMER LOGIC (Server-Synced)
+    --------------------------------------------------------------*/
     var serverTime = <?php echo $server_now; ?>;
     var browserTime = Math.floor(Date.now() / 1000);
     var timeGap = serverTime - browserTime;
@@ -447,69 +456,83 @@ jQuery(document).ready(function($) {
     setInterval(updateViewClock, 1000); 
     updateViewClock();
 
+    /*--------------------------------------------------------------
+    # 2. CALCULATION LOGIC
+    --------------------------------------------------------------*/
     function calculate() {
-    let itemsSubtotal = 0;
+        let itemsSubtotal = 0;
 
-    $('.item-row').each(function() {
-        // Get values from the current row
-        let basePrice    = parseFloat($(this).find('.price-trigger').val()) || 0;
-        let variantPrice = parseFloat($(this).find('.variant-trigger').val()) || 0;
-        let qty          = parseFloat($(this).find('.qty-trigger').val()) || 0;
+        // Loop through each item row
+        $('.item-row').each(function() {
+            let basePrice    = parseFloat($(this).find('.price-trigger').val()) || 0;
+            let variantPrice = parseFloat($(this).find('.variant-trigger').val()) || 0;
+            let qty          = parseFloat($(this).find('.qty-trigger').val()) || 0;
 
-        // Formula: (Variant + Base) * Qty
-        let rowTotal = (basePrice + variantPrice) * qty;
+            let rowTotal = (basePrice + variantPrice) * qty;
+            $(this).find('.row-subtotal').text(rowTotal.toFixed(2));
+            itemsSubtotal += rowTotal;
+        });
+
+        // Determine Active Charge (Checks which field exists in the DOM)
+        let deliveryFee   = parseFloat($('input[name="afon_delivery_fee"]').val()) || 0;
+        let collectionFee = parseFloat($('input[name="afon_collection_fee"]').val()) || 0;
         
-        // Update row display
-        $(this).find('.row-subtotal').text(rowTotal.toFixed(2));
+        // If delivery exists, use it; otherwise use collection
+        let activeCharge = ($('input[name="afon_delivery_fee"]').length > 0) ? deliveryFee : collectionFee;
+
+        // Determine Active Discount
+        let activeDiscount = parseFloat($('#afon_discount_amt').val()) || 0;
+
+        // Fixed Fees
+        let service = parseFloat($('#afon_service_fee').val()) || 0;
+        let bag     = parseFloat($('#afon_bag_fee').val()) || 0;
+        let tip     = parseFloat($('input[name="afon_tip_amount"]').val()) || 0;
+
+        // Final Total Calculation
+        // Formula: (Items - Discount) + Charge + Service + Bag + Tip
+        let finalTotal = (itemsSubtotal - activeDiscount) + activeCharge + service + bag + tip;
         
-        itemsSubtotal += rowTotal;
+        if (finalTotal < 0) finalTotal = 0;
+
+        // Update the Read-Only Total Field
+        $('#final-total').val(finalTotal.toFixed(2));
+    }
+
+    /*--------------------------------------------------------------
+    # 3. EVENT LISTENERS
+    --------------------------------------------------------------*/
+    
+    // Listen for any input changes in the entire calculation area
+    $(document).on('input change', '.price-trigger, .variant-trigger, .qty-trigger, .charge-trigger, .discount-trigger', function() { 
+        calculate(); 
     });
 
-    // Collect Fees (Delivery, Service, etc.)
-    let delivery = parseFloat($('input[name="afon_delivery_fee"]').val()) || 0;
-    let service  = parseFloat($('#afon_service_fee').val()) || 0;
-    let bag      = parseFloat($('#afon_bag_fee').val()) || 0;
-    let tip      = parseFloat($('input[name="afon_tip_amount"]').val()) || 0;
-    let discount = parseFloat($('#afon_discount_amt').val()) || 0;
-
-    // Final Total: (Items - Discount) + Fees
-    let finalTotal = (itemsSubtotal - discount) + delivery + service + bag + tip;
-    
-    if (finalTotal < 0) finalTotal = 0;
-
-    $('#final-total').val(finalTotal.toFixed(2));
-}
-
-// Update the Event Listener to include .variant-trigger
-$(document).on('input change', '.price-trigger, .variant-trigger, .qty-trigger, .charge-trigger, #afon_discount_amt', function() { 
-    calculate(); 
-});
-
-    // --- 4. Dynamic Row Logic ---
+    // Handle Adding New Items
     $('#add-new-item').click(function() {
         let row = `
-<tr class="item-row">
-    <td><input type="text" name="afon_items_name[]" class="edit-input" placeholder="Item name"></td>
-    <td>
-        <div class="input-with-symbol">
-            <span>+£</span>
-            <input type="number" step="0.01" name="afon_items_vprice[]" value="0.00" class="edit-input variant-trigger">
-        </div>
-    </td>
-    <td>
-        <div class="input-with-symbol">
-            <span>£</span>
-            <input type="number" step="0.01" name="afon_items_price[]" value="0.00" class="edit-input price-trigger">
-        </div>
-    </td>
-    <td><input type="number" name="afon_items_qty[]" value="1" class="edit-input qty-trigger"></td>
-    <td style="text-align:right; font-weight:700;">£<span class="row-subtotal">0.00</span></td>
-    <td style="text-align:center;"><span class="dashicons dashicons-trash remove-item" style="color:red; cursor:pointer;"></span></td>
-</tr>`;
+        <tr class="item-row">
+            <td><input type="text" name="afon_items_name[]" class="edit-input" placeholder="Item name"></td>
+            <td>
+                <div class="input-with-symbol">
+                    <span>+£</span>
+                    <input type="number" step="1" name="afon_items_vprice[]" value="0.00" class="edit-input variant-trigger">
+                </div>
+            </td>
+            <td>
+                <div class="input-with-symbol">
+                    <span>£</span>
+                    <input type="number" step="1" name="afon_items_price[]" value="0.00" class="edit-input price-trigger">
+                </div>
+            </td>
+            <td><input type="number" name="afon_items_qty[]" value="1" class="edit-input qty-trigger"></td>
+            <td style="text-align:right; font-weight:700;">£<span class="row-subtotal">0.00</span></td>
+            <td style="text-align:center;"><span class="dashicons dashicons-trash remove-item" style="color:red; cursor:pointer;"></span></td>
+        </tr>`;
         $('#items-table tbody').append(row);
         calculate();
     });
 
+    // Handle Removing Items
     $(document).on('click', '.remove-item', function() {
         if ($('.item-row').length > 1) { 
             $(this).closest('tr').remove(); 
@@ -517,11 +540,16 @@ $(document).on('input change', '.price-trigger, .variant-trigger, .qty-trigger, 
         }
     });
 
-    // Run on page load to initialize totals
+    /*--------------------------------------------------------------
+    # 4. INITIALIZATION
+    --------------------------------------------------------------*/
     calculate();
+
 });
 
-// --- 5. Utility Functions ---
+/*--------------------------------------------------------------
+# 5. UTILITY FUNCTIONS
+--------------------------------------------------------------*/
 function copyToClipboard(text) {
     var dummy = document.createElement("textarea");
     document.body.appendChild(dummy);

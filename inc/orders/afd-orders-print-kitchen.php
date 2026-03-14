@@ -36,15 +36,21 @@ if (isset($_GET['action']) && $_GET['action'] === 'print' && $_GET['type'] === '
     $kitchen_notes = !empty($order->kitchen_notes) ? $order->kitchen_notes : (!empty($order->notes) ? $order->notes : '');
     $delivery_notes = !empty($order->delivery_notes) ? $order->delivery_notes : '';
 
-    // --- FINANCIAL CALCULATIONS ---
-    $items_subtotal = 0;
-    if(is_array($items)){
-        foreach($items as $item){ 
-            $items_subtotal += (floatval($item['price']) * intval($item['qty'])); 
-        }
+   // --- FINANCIAL CALCULATIONS ---
+$items_subtotal = 0;
+if (is_array($items)) {
+    foreach ($items as $item) { 
+        // 1. Get Base Price and Variant Price
+        $base_p    = isset($item['price']) ? floatval($item['price']) : 0;
+        $variant_p = isset($item['vPrice']) ? floatval($item['vPrice']) : 0;
+        $qty       = isset($item['qty']) ? intval($item['qty']) : 0;
+
+        // 2. Formula: (Base + Variant) * Qty
+        $items_subtotal += ($base_p + $variant_p) * $qty; 
     }
-    $service_fee   = (float)get_option('afd_service_charge', '0.00');
-    $bag_fee       = (float)get_option('afd_bag_charge', '0.00');
+}
+    $service_fee   = floatval($order->service_fee);
+    $bag_fee       = floatval($order->bag_fee);
     $delivery_charge  = floatval($order->delivery_charge);
     $tips          = isset($order->tip_amount) ? floatval($order->tip_amount) : 0.00; 
 
@@ -152,22 +158,39 @@ if (isset($_GET['action']) && $_GET['action'] === 'print' && $_GET['type'] === '
                     </tr>
                 </thead>
                 <tbody>
-                    <?php if(is_array($items)) : foreach($items as $item) : 
-                        $unit_p = isset($item['price']) ? floatval($item['price']) : 0;
-                        $line_total = $unit_p * intval($item['qty']);
-                    ?>
-                        <tr class="item-row">
-                            <td class="qty"><?php echo intval($item['qty']); ?>x</td>
-                            
-                            <td>
-                                <span class="item-name"><?php echo esc_html($item['name']); ?></span>
-                                <span class="unit-price">£<?php echo number_format($unit_p, 2); ?> each</span>
-                                <b><?php if (!empty($item['vName'])) { echo esc_html($item['vName']); } ?></b>
-                            </td>
-                            <td class="item-price">£<?php echo number_format($line_total, 2); ?></td>
-                        </tr>
-                    <?php endforeach; endif; ?>
-                </tbody>
+    <?php if(is_array($items)) : foreach($items as $item) : 
+        // 1. Get Base Price, Variant Price, and Quantity
+        $base_p    = isset($item['price']) ? floatval($item['price']) : 0;
+        $variant_p = isset($item['vPrice']) ? floatval($item['vPrice']) : 0;
+        $qty       = isset($item['qty']) ? intval($item['qty']) : 1;
+
+        // 2. Calculation: (Base + Variant) * Qty
+        $combined_unit_p = $base_p + $variant_p; 
+        $line_total      = $combined_unit_p * $qty;
+    ?>
+        <tr class="item-row">
+            <td class="qty"><?php echo $qty; ?>x</td>
+            
+            <td>
+                <span class="item-name" style="display:block; font-weight:600;">
+                    <?php echo esc_html($item['name']); ?>
+                </span>
+                
+                <span class="unit-price">
+                    £<?php echo number_format($combined_unit_p, 2); ?> each
+                </span>
+
+                <?php if (!empty($item['vName'])) : ?>
+                    <b class="variant-name"><?php echo esc_html($item['vName']); ?></b>
+                <?php endif; ?>
+            </td>
+            
+            <td class="item-price" style="text-align:right;">
+                £<?php echo number_format($line_total, 2); ?>
+            </td>
+        </tr>
+    <?php endforeach; endif; ?>
+</tbody>
             </table>
 
             <div class="summary-section">
@@ -176,10 +199,26 @@ if (isset($_GET['action']) && $_GET['action'] === 'print' && $_GET['type'] === '
         <span>£<?php echo number_format($items_subtotal, 2); ?></span>
     </div>
 
-    <div class="summary-line">
-        <span>Discount</span>
-        <span>-£<?php echo number_format(max(0, (float)$order->delivery_discount), 2); ?></span>
-    </div>
+    <?php 
+// Add this line to define the variable from the order object
+$order_type = isset($order->order_type) ? strtolower($order->order_type) : 'delivery'; 
+?>
+
+<div class="summary-line">
+    <span>
+        <?php echo ($order_type === 'delivery') ? 'Discount' : 'Discount'; ?>
+    </span>
+    <span>
+        -£<?php 
+            // Select the discount value based on order type
+            $active_discount = ($order_type === 'delivery') 
+                ? (float)($order->delivery_discount ?? 0) 
+                : (float)($order->collection_discount ?? 0);
+
+            echo number_format(max(0, $active_discount), 2); 
+        ?>
+    </span>
+</div>
 
     <div class="summary-line">
         <span>Service Charge</span>

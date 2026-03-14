@@ -589,3 +589,53 @@ jQuery(document).ready(function($){
 
 <?php return ob_get_clean(); }
 add_shortcode('fd_food_items','fd_food_items_shortcode');
+
+
+
+
+
+
+
+
+
+
+
+//// Print
+
+/*--------------------------------------------------------------
+# 0. INVOICE GENERATION LOGIC (PDF/Print)
+--------------------------------------------------------------*/
+if (isset($_GET['action']) && $_GET['action'] === 'print' && isset($_GET['type']) && $_GET['type'] === 'customer') {
+    $order = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $afon_order_id));
+    if (!$order) wp_die('Order not found.');
+
+    $items = json_decode($order->items_json, true) ?: [];
+
+
+    echo '<div class="invoice-box">';
+    echo '<button class="no-print" onclick="window.print()">Print Invoice</button>';
+    echo '<h1>Invoice #' . esc_html(!empty($order->display_id) ? $order->display_id : 'REC-'.$order->id) . '</h1>';
+    echo '<p>Date: ' . esc_html($order->order_date) . '<br>';
+    echo 'Customer: ' . esc_html($order->full_name) . '<br>';
+    echo 'Phone: ' . esc_html($order->phone) . '<br>';
+    echo 'Email: ' . esc_html($order->customer_email) . '</p>';
+
+    echo '<table><thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody>';
+    foreach ($items as $item) {
+        echo '<tr>
+            <td>' . esc_html($item['name']) . '</td>
+            <td>' . intval($item['qty']) . '</td>
+            <td>£' . number_format($item['price'], 2) . '</td>
+            <td>£' . number_format($item['qty'] * $item['price'], 2) . '</td>
+        </tr>';
+    }
+    echo '</tbody><tfoot>
+        <tr><td colspan="3">Subtotal</td><td>£' . number_format($order->total_price - $order->delivery_fee - $order->tip_amount, 2) . '</td></tr>
+        <tr><td colspan="3">Delivery</td><td>£' . number_format($order->delivery_fee, 2) . '</td></tr>
+        <tr><td colspan="3">Tip</td><td>£' . number_format($order->tip_amount, 2) . '</td></tr>
+        <tr class="total-row"><td colspan="3">Total</td><td>£' . number_format($order->total_price, 2) . '</td></tr>
+    </tfoot></table>';
+    echo '</div>';
+    echo '<script>window.onload = function() { window.print(); }</script>';
+    exit;
+}
