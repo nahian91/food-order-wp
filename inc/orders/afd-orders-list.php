@@ -132,7 +132,7 @@ $alarm_trigger_count = 0;
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
         <h1 style="font-weight: 900;">Order Master Dashboard</h1>
         <div style="background: #fff; padding: 5px 15px; border-radius: 20px; border: 1px solid #ccc; font-weight: bold;">
-            Auto-Refresh: <span id="timer-count" style="color:red;">60</span>s
+            Auto-Refresh: <span id="timer-count" style="color:red;">30</span>s
         </div>
     </div>
 
@@ -203,7 +203,7 @@ $alarm_trigger_count = 0;
                         <?php endif; ?>
                         
                         <a class="fd-action-btn" href="<?php echo $url . '&action=edit'; ?>"><span class="dashicons dashicons-edit"></span></a>
-                        <a class="fd-action-btn" href="<?php echo $url . '&action=print&type=kitchen'; ?>" target="_blank"><span class="dashicons dashicons-media-text"></span> Receipt</a>
+                        <a class="fd-action-btn" href="<?php echo $url . '&action=print&type=kitchen'; ?>"><span class="dashicons dashicons-media-text"></span> Receipt</a>
                     </div>
                 </td>
             </tr>
@@ -249,15 +249,39 @@ jQuery(document).ready(function($){
         table.draw();
     });
 
-    // 3. AUTO-PRINT LOGIC
-    const urlParams = new URLSearchParams(window.location.search);
-    const autoPrintID = urlParams.get('autoprint');
-    if (autoPrintID) {
-        const printUrl = "admin.php?page=awesome_food_delivery&tab=orders&order_id=" + autoPrintID + "&action=print&type=kitchen";
-        window.open(printUrl, '_blank');
+    // --- 3. UPDATED AUTO-PRINT LOGIC (Direct Print, No New Tab) ---
+const urlParams = new URLSearchParams(window.location.search);
+const autoPrintID = urlParams.get('autoprint');
+
+if (autoPrintID) {
+    // 1. Construct the print URL
+    const printUrl = "admin.php?page=awesome_food_delivery&tab=orders&order_id=" + autoPrintID + "&action=print&type=kitchen";
+    
+    // 2. Create a hidden iframe to load the print page
+    var printFrame = document.createElement('iframe');
+    printFrame.style.position = 'fixed';
+    printFrame.style.right = '0';
+    printFrame.style.bottom = '0';
+    printFrame.style.width = '0';
+    printFrame.style.height = '0';
+    printFrame.style.border = '0';
+    printFrame.src = printUrl;
+    
+    document.body.appendChild(printFrame);
+
+    // 3. Once the iframe loads, trigger the print dialog
+    printFrame.onload = function() {
+        printFrame.contentWindow.focus();
+        printFrame.contentWindow.print();
+        
+        // 4. Clean up the URL so it doesn't print again on refresh
         const cleanUrl = window.location.href.split('&autoprint=')[0];
         window.history.replaceState({}, document.title, cleanUrl);
-    }
+        
+        // Optional: Remove the iframe after a delay
+        setTimeout(() => { document.body.removeChild(printFrame); }, 1000);
+    };
+}
 
     // 4. Kitchen Timer Sync Engine
     var sT = <?php echo $server_now; ?>, bT = Math.floor(Date.now() / 1000), gap = sT - bT;
@@ -289,7 +313,7 @@ jQuery(document).ready(function($){
     });
 
     // 6. Global Auto-Refresh (30s)
-    var refresh = 60;
+    var refresh = 30;
     setInterval(function(){ 
         refresh--; 
         $('#timer-count').text(refresh); 
