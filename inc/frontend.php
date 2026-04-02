@@ -18,6 +18,7 @@ $redirect_after_login = add_query_arg('redirect_to', home_url('/checkout/'), $cu
     
     $currency = '£';
     
+    $minimum_order       = get_option('afd_minimum_order', '0.00');
     $delivery_charge       = get_option('afd_delivery_charge', '0.00');
     $collection_fee     = get_option('afd_pickup_charge', '0.00'); 
     $service_fee        = get_option('afd_service_charge', '0.00');
@@ -349,7 +350,17 @@ body:not(.admin-bar) .fd-mobile-cat-header {
                     <div class="fd-summary-row"><span><span id="lbl-fee-name">Delivery</span> Fee</span><span><?php echo $currency; ?><span id="lbl-fee-val">0.00</span></span></div>
                     <div class="fd-summary-row"><span>Bag Charge</span><span><?php echo $currency . number_format((float)$bag_fee, 2); ?></span></div>
                     <div class="fd-summary-row"><span>Driver Tip</span><span style="display:flex; align-items:center; gap:5px;"><?php echo $currency; ?><input type="number" id="fd-tip-amount" class="fd-tip-input" value="0.00" step="0.50" min="0" style="width:60px; text-align:right; border:1px solid #eee; border-radius:5px; padding:2px 5px;"></span></div>
-                    <div class="fd-summary-row total-row" style="background: #fef2f2; padding: 15px; border-radius: 12px; margin-top: 15px;"><span style="font-weight:800;">Total Due</span><span style="color:#d63638; font-size: 22px; font-weight: 900;"><?php echo $currency; ?><span id="fd-total-due">0.00</span></span></div>
+                    <div class="fd-summary-row total-row" style="background: #fef2f2; padding: 15px; border-radius: 12px; margin-top: 15px;">
+    <span style="font-weight:800;">Total Due</span>
+    <span style="color:#d63638; font-size: 22px; font-weight: 900;">
+        <?php echo $currency; ?><span id="fd-total-due">0.00</span>
+    </span>
+</div>
+
+<div id="afd-min-order-msg" style="display:none; color: #d63638; background: #fff1f2; border: 1px solid #fecdd3; padding: 10px; border-radius: 8px; margin-top: 10px; font-weight: 800; text-align: center; font-size: 13px;">
+    <span class="dashicons dashicons-warning" style="font-size:16px; vertical-align:middle;"></span>
+    Minimum order amount is <?php echo $currency . $minimum_order; ?>
+</div>
                     <textarea id="fd-kitchen-notes" class="fd-kitchen-notes" rows="2" placeholder="Any allergies or special requests?" style="width:100%; padding:10px; border-radius:10px; border:1px solid #ddd; margin-top:15px; font-size:13px;"></textarea>
                 </div>
                 <a href="#" class="fd-checkout-btn" id="fd-checkout-trigger" style="display:block; text-align:center; text-decoration:none;">
@@ -413,6 +424,7 @@ jQuery(document).ready(function($){
         bagFee: parseFloat("<?php echo $bag_fee; ?>") || 0,
         deliveryDiscount: parseFloat("<?php echo $delivery_discount; ?>") || 0,
         collectionDiscount: parseFloat("<?php echo $collection_discount; ?>") || 0,
+        minOrder: parseFloat("<?php echo $minimum_order; ?>") || 0,
         currency: "<?php echo $currency; ?>"
     };
 
@@ -479,6 +491,30 @@ jQuery(document).ready(function($){
 
         let totalDue = subtotal > 0 ? (orderTotal + config.serviceFee + activeFee + config.bagFee + tip) : 0;
         $('#fd-total-due, #m-total').text(totalDue.toFixed(2));
+        // --- MINIMUM ORDER LOGIC (DELIVERY ONLY) ---
+const checkoutBtn = $('#fd-checkout-trigger');
+const minMsg = $('#afd-min-order-msg');
+const minOrderVal = parseFloat("<?php echo $minimum_order; ?>") || 0;
+const currentTotal = parseFloat($('#fd-total-due').text()) || 0;
+
+// 'isDel' is already defined in your script as: 
+// let isDel = $('input[name="order_type"]:checked').val() === 'delivery';
+
+if (cart.length > 0 && isDel) {
+    if (currentTotal < minOrderVal) {
+        // LOCK CHECKOUT for Delivery
+        checkoutBtn.css({'opacity': '0.5', 'pointer-events': 'none', 'filter': 'grayscale(1)'});
+        minMsg.fadeIn(); 
+    } else {
+        // UNLOCK CHECKOUT
+        checkoutBtn.css({'opacity': '1', 'pointer-events': 'auto', 'filter': 'grayscale(0)'});
+        minMsg.fadeOut();
+    }
+} else {
+    // ALWAYS UNLOCK for Collection or Empty Cart
+    checkoutBtn.css({'opacity': '1', 'pointer-events': 'auto', 'filter': 'grayscale(0)'});
+    minMsg.hide();
+}
         $('#m-count').text(count);
         localStorage.setItem('fd_cart_save', JSON.stringify(cart));
     }

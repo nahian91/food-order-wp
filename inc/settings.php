@@ -114,6 +114,7 @@ function fd_settings_tab() {
 
         update_option('afd_status_message', sanitize_textarea_field($_POST['afd_status_message']));
         update_option('afd_warning_message', sanitize_textarea_field($_POST['afd_warning_message']));
+        update_option('afd_minimum_order', sanitize_text_field($_POST['afd_minimum_order']));
         update_option('afd_delivery_charge', sanitize_text_field($_POST['afd_delivery_charge']));
         update_option('afd_pickup_charge', sanitize_text_field($_POST['afd_pickup_charge']));
         update_option('afd_service_charge', sanitize_text_field($_POST['afd_service_charge']));
@@ -142,6 +143,7 @@ function fd_settings_tab() {
     $schedule           = get_option('afd_schedule', []);
     $message            = get_option('afd_status_message', 'Sorry, we are currently closed!');
     $warning_msg        = get_option('afd_warning_message', 'Hurry! We are closing in %min% minutes.');
+    $minimum_order    = get_option('afd_minimum_order', '0.00');
     $delivery_charge    = get_option('afd_delivery_charge', '0.00');
     $pickup_charge      = get_option('afd_pickup_charge', '0.00');
     $service_charge     = get_option('afd_service_charge', '0.00');
@@ -230,6 +232,14 @@ function fd_settings_tab() {
                         </div>
                         
                         <div class="input-field">
+                            <label>Minimum Order (£)</label>
+                            <div class="currency-input">
+                                <span class="currency-symbol">£</span>
+                                <input type="text" name="afd_minimum_order" value="<?php echo esc_attr($minimum_order); ?>" placeholder="0.00">
+                            </div>
+                        </div>
+
+                        <div class="input-field" style="margin-top: 15px;">
                             <label>Delivery Charge (£)</label>
                             <div class="currency-input">
                                 <span class="currency-symbol">£</span>
