@@ -388,14 +388,26 @@ function afd_generate_unique_display_id() {
     global $wpdb;
     $table_name = $wpdb->prefix . 'afd_food_orders';
     $date_string = current_time('Ymd');
-    $today_start = current_time('Y-m-d') . ' 00:00:00';
-
-    $count_today = $wpdb->get_var($wpdb->prepare(
-        "SELECT COUNT(id) FROM $table_name WHERE order_date >= %s",
-        $today_start
+    
+    // Look for the MAXIMUM display_id created today
+    // We use LIKE 'YYYYMMDD-%' to ensure we only look at today's batch
+    $last_id = $wpdb->get_var($wpdb->prepare(
+        "SELECT display_id FROM $table_name 
+         WHERE display_id LIKE %s 
+         ORDER BY id DESC LIMIT 1",
+        $date_string . '-%'
     ));
 
-    $new_sequence = intval($count_today) + 1;
+    if ($last_id) {
+        // Extract the number after the hyphen (e.g., '002' from '20260403-002')
+        $parts = explode('-', $last_id);
+        $last_sequence = intval($parts[1]);
+        $new_sequence = $last_sequence + 1;
+    } else {
+        // No orders yet today
+        $new_sequence = 1;
+    }
+
     return $date_string . '-' . str_pad($new_sequence, 3, '0', STR_PAD_LEFT);
 }
 
