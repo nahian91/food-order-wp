@@ -407,7 +407,7 @@ $invoice_url = $base_url . '&action=print&type=customer';
             <div class="addr-row"><span>Door:</span> <span class="addr-val"><?php echo esc_html($disp_door); ?></span></div>
             <div class="addr-row"><span>Building:</span> <span class="addr-val"><?php echo esc_html($disp_building); ?></span></div>
             <div class="addr-row"><span>Road:</span> <span class="addr-val"><?php echo esc_html($disp_road); ?></span></div>
-            <div class="addr-row"><span>Postcode:</span> <span class="addr-val" style="font-weight:900; color:var(--clr-primary);"><?php echo strtoupper(esc_html($disp_post)); ?></span></div>
+            <div class="addr-row test-class"><span>Postcode:</span> <span class="addr-val" style="font-weight:900; color:var(--clr-primary);"><?php echo strtoupper(esc_html($disp_post)); ?></span></div>
             
             <button type="button" onclick="copyToClipboard('<?php echo esc_js($full_address_string); ?>')" class="btn-action" style="width:100%; margin-top:10px; justify-content:center;">
                 📋 Copy Full Address
