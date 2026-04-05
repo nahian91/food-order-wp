@@ -416,14 +416,6 @@ $invoice_url = $base_url . '&action=print&type=customer';
         <?php endif; ?>
     </div>
 </div>
-
-                <div class="view-card" style="border:1px solid #f5c2c7; background:#fff8f8;">
-                    <div class="view-card-body" style="text-align:center;">
-                        <a href="<?php echo $delete_url; ?>" class="btn-action btn-delete" style="width:100%; justify-content:center;" onclick="return confirm('Delete this order permanently?')">
-                            <span class="dashicons dashicons-trash"></span> Delete Order
-                        </a>
-                    </div>
-                </div>
             </div>
         </div>
     </form>

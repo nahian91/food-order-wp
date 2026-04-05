@@ -3,15 +3,16 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 /**
  * Customers Tab - CRM SaaS Design 
- * COMPLETE INTEGRATION: DataTables + Separate Email + Detailed Address Profile + Address Column
+ * FILTERED: Only shows customers with order history + Revenue Stats
  */
 function fd_customers_tab() {
     global $wpdb;
     $afon_currency = get_option( 'fd_currency', '£' );
     $afon_page_slug = 'awesome_food_delivery';
     $table_orders = $wpdb->prefix . 'afd_food_orders';
+    $table_users  = $wpdb->users;
 
-    // ----- 1. SINGLE CUSTOMER VIEW (Nice Detailed Format) -----
+    // ----- 1. SINGLE CUSTOMER VIEW (Detailed Profile) -----
     if ( isset( $_GET['view'] ) ) :
         $afon_user_id = intval( $_GET['view'] );
         $afon_user    = get_userdata( $afon_user_id );
@@ -21,7 +22,7 @@ function fd_customers_tab() {
             return;
         }
 
-        // Fetching individual address components
+        // Fetch individual address components
         $u_phone     = get_user_meta($afon_user_id, 'fd_user_phone', true);
         $u_flat      = get_user_meta($afon_user_id, 'fd_flat_no', true);
         $u_building  = get_user_meta($afon_user_id, 'fd_building', true);
@@ -77,11 +78,6 @@ function fd_customers_tab() {
                             <label style="font-size:10px; font-weight:800; color:#94a3b8; text-transform:uppercase; display:block;">Door No.</label>
                             <span style="font-weight:600; color:#1e293b;"><?php echo esc_html($u_door ?: '-'); ?></span>
                         </div>
-                    </div>
-
-                    <div style="margin-bottom:15px;">
-                        <label style="font-size:10px; font-weight:800; color:#94a3b8; text-transform:uppercase; display:block;">Building / Estate</label>
-                        <span style="font-weight:600; color:#1e293b;"><?php echo esc_html($u_building ?: '-'); ?></span>
                     </div>
 
                     <div style="margin-bottom:15px;">
@@ -146,13 +142,23 @@ function fd_customers_tab() {
         </div>
         <?php return; endif;
 
-    // ----- 2. DIRECTORY VIEW (RESTORED DATATABLES) -----
-    $afon_all_users = get_users( [ 'number' => -1 ] ); 
+    // ----- 2. DIRECTORY VIEW (Filtered by Orders) -----
+    // Using INNER JOIN to only get users who exist in the orders table
+    $order_customers = $wpdb->get_results("
+        SELECT 
+            u.ID, u.display_name, u.user_email,
+            COUNT(o.id) as order_count,
+            SUM(o.total_price) as total_revenue
+        FROM $table_users u
+        INNER JOIN $table_orders o ON u.ID = o.customer_id
+        GROUP BY u.ID
+        ORDER BY total_revenue DESC
+    ");
     ?>
 
     <div class="wrap afon-wrap">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-            <h1 style="font-weight:900; font-size:24px;">Customer Directory</h1>
+            <h1 style="font-weight:900; font-size:24px;">Order-Based Customers</h1>
         </div>
 
         <div style="background:#fff; border-radius:12px; border:1px solid #ccd0d4; padding:15px; box-shadow: 0 4px 12px rgba(0,0,0,0.03);">
@@ -161,42 +167,43 @@ function fd_customers_tab() {
                     <tr style="background:#f8fafc;">
                         <th style="padding-left:10px;">Customer Name</th>
                         <th>Email Address</th>
-                        <th width="140">Phone Number</th>
+                        <th width="130">Phone</th>
                         <th>Address</th>
                         <th width="80">Orders</th>
+                        <th width="100">Revenue</th>
                         <th width="110" style="text-align:right; padding-right:10px;">Action</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ( $afon_all_users as $afon_u ) :
-                        $u_id = $afon_u->ID;
+                    <?php foreach ( $order_customers as $cust ) :
+                        $u_id     = $cust->ID;
                         $phone    = get_user_meta($u_id, 'fd_user_phone', true) ?: '-';
                         $door     = get_user_meta($u_id, 'fd_door_no', true);
                         $road     = get_user_meta($u_id, 'fd_road_name', true);
                         $postcode = get_user_meta($u_id, 'fd_user_postcode', true);
                         
-                        // Construct display address
                         $display_addr = trim(($door ? $door . ', ' : '') . ($road ? $road : ''));
                         if (empty($display_addr)) $display_addr = '-';
-
-                        $order_count = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $table_orders WHERE customer_id = %d", $u_id));
                     ?>
                     <tr>
                         <td style="padding-left:10px;">
                             <div style="display: flex; align-items: center; gap: 10px;">
                                 <?php echo get_avatar($u_id, 32, '', '', ['style'=>'border-radius:8px;']); ?>
-                                <strong style="color:#1e293b;"><?php echo esc_html($afon_u->display_name); ?></strong>
+                                <strong style="color:#1e293b;"><?php echo esc_html($cust->display_name); ?></strong>
                             </div>
                         </td>
-                        <td style="color:#2271b1; font-weight:500;"><?php echo esc_html($afon_u->user_email); ?></td>
+                        <td style="color:#2271b1; font-weight:500;"><?php echo esc_html($cust->user_email); ?></td>
                         <td><?php echo esc_html($phone); ?></td>
                         <td style="font-size:12px; color:#64748b;">
                             <?php echo esc_html($display_addr); ?> <span style="color:#d63638; font-weight:700; margin-left:5px;"><?php echo esc_html($postcode); ?></span>
                         </td>
                         <td>
                             <span style="background:#f1f5f9; padding:4px 10px; border-radius:10px; font-weight:800; font-size:11px;">
-                                <?php echo (int)$order_count; ?>
+                                <?php echo (int)$cust->order_count; ?>
                             </span>
+                        </td>
+                        <td style="color:#16a34a; font-weight:700;">
+                            <?php echo $afon_currency . number_format($cust->total_revenue, 2); ?>
                         </td>
                         <td style="text-align:right; padding-right:10px;">
                             <a href="?page=<?php echo $afon_page_slug; ?>&tab=customers&view=<?php echo $u_id; ?>" class="button button-primary" style="border-radius:6px; font-weight:600;">View Profile</a>
@@ -207,4 +214,17 @@ function fd_customers_tab() {
             </table>
         </div>
     </div>
+
+    <script>
+    jQuery(document).ready(function($) {
+        $('#afon-users-directory-table').DataTable({
+            "pageLength": 20,
+            "order": [[5, "desc"]], // Default sort by Revenue
+            "language": {
+                "search": "_INPUT_",
+                "searchPlaceholder": "Search customers..."
+            }
+        });
+    });
+    </script>
 <?php } ?>

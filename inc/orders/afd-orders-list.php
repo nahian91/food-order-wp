@@ -20,6 +20,19 @@ if (isset($_GET['action']) && $_GET['action'] === 'print' && isset($_GET['order_
     }
 }
 
+// --- DELETE ACTION HANDLER ---
+if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['order_id'])) {
+    $order_id = intval($_GET['order_id']);
+    
+    // Delete the order from the custom table
+    $wpdb->delete($table_name, ['id' => $order_id], ['%d']);
+    
+    // Redirect back to the dashboard with a success flag
+    $redirect_url = admin_url('admin.php?page=awesome_food_delivery&tab=orders&deleted=1');
+    echo "<script>window.location.href='$redirect_url';</script>";
+    exit;
+}
+
 // --- 1. ACTION HANDLERS ---
 if (isset($_GET['action']) && $_GET['action'] === 'update_status' && isset($_GET['order_id']) && isset($_GET['new_status'])) {
     $order_id = intval($_GET['order_id']);
@@ -204,6 +217,12 @@ $alarm_trigger_count = 0;
                         
                         <a class="fd-action-btn" href="<?php echo $url . '&action=edit'; ?>"><span class="dashicons dashicons-edit"></span></a>
                         <a class="fd-action-btn" href="<?php echo $url . '&action=print&type=kitchen'; ?>"><span class="dashicons dashicons-media-text"></span> Receipt</a>
+                        <a class="fd-action-btn fd-delete-btn" 
+   href="<?php echo $url . '&action=delete'; ?>" 
+   onclick="return confirm('Are you sure you want to delete this order?');" 
+   style="color:#d63638; border-color:#f8d7da;">
+   <span class="dashicons dashicons-trash"></span>
+</a>
                     </div>
                 </td>
             </tr>

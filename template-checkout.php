@@ -219,7 +219,8 @@ $user_postcode  = get_user_meta($u->ID, 'fd_user_postcode', true);
                                 <div class="col-md-8"><label class="fd-label">Building Name</label><input type="text" id="building" class="fd-input" value="<?php echo esc_attr($user_building); ?>" required></div>
                                 <div class="col-md-4"><label class="fd-label">Door No</label><input type="text" id="door_no" class="fd-input" value="<?php echo esc_attr($user_door); ?>" required></div>
                                 <div class="col-md-8"><label class="fd-label">Road / Street</label><input type="text" id="road_name" class="fd-input" value="<?php echo esc_attr($user_road); ?>" required></div>
-                                <div class="col-12"><label class="fd-label">Postcode</label><input type="text" id="postcode" class="fd-input" value="<?php echo esc_attr($user_postcode); ?>" style="text-transform:uppercase" required></div>
+                                <div class="col-12"><label class="fd-label">Postcode</label><input type="text" id="postcode" class="fd-input" value="<?php echo esc_attr($user_postcode); ?>" style="text-transform:uppercase" required>
+<span id="postcode-live-error" style="color:var(--fd-red); font-size:12px; font-weight:800; margin-top:5px; display:none;"></span></div>
                             </div>
                         </div>
 
@@ -310,24 +311,52 @@ jQuery(document).ready(function($){
         curr: "<?php echo $currency; ?>"
     };
 
+    // LIVE POSTCODE VALIDATION
+    $('#postcode').on('input', function() {
+        const $el = $(this);
+        const $err = $('#postcode-live-error');
+        const val = $el.val().trim().toUpperCase().replace(/\s+/g, '');
+        const allowed = ['EN3', 'EN1', 'EN2', 'EN8', 'N9', 'EN7'];
+        const isColl = $('#typePickup').is(':checked');
+        
+        if (isColl || val === "") {
+            $el.css('border-color', ''); 
+            $err.hide();
+            return;
+        }
+
+        const startMatch = allowed.some(p => val.startsWith(p));
+        
+        if (!startMatch) {
+            $el.css('border-color', '#d63638');
+            $err.text('We do not deliver to this area.').show();
+        } else if (val.length !== 6) {
+            $el.css('border-color', '#d63638');
+            $err.text('Postcode must be exactly 6 characters.').show();
+        } else {
+            $el.css('border-color', '#10b981'); // Valid
+            $err.hide();
+        }
+    });
+
     function updatePricing() {
         const isColl = $('#typePickup').is(':checked');
         const tipVal = parseFloat($('#tipInput').val()) || 0;
         
-        // Toggle visibility of the delivery address section
         $('#deliverySection').toggle(!isColl);
-        
-        // FIX: Toggle the 'required' attribute on address inputs
-        // This prevents the browser from blocking the form when inputs are hidden
         $('#deliverySection').find('input').prop('required', !isColl);
         
-        // Update the UI label for the fee
+        // Reset error UI if switched to collection
+        if(isColl) {
+            $('#postcode').css('border-color', '');
+            $('#postcode-live-error').hide();
+        }
+
         $('#feeLabel').text(isColl ? 'Collection Fee' : 'Delivery Fee');
         
         let subtotal = 0;
         const $list = $('#uiItemList').empty();
         
-        // Handle empty cart state
         if(orderItems.length === 0) {
             $list.html('<p class="text-center py-4 text-muted">Your cart is empty.</p>');
             $('#mainSubmitBtn').prop('disabled', true);
@@ -336,12 +365,10 @@ jQuery(document).ready(function($){
             $('#mainSubmitBtn').prop('disabled', false);
         }
 
-        // Render line items and calculate subtotal
         orderItems.forEach(item => {
             const basePrice = parseFloat(item.price) || 0;
             const variationPrice = parseFloat(item.vPrice) || 0;
             const line = (basePrice + variationPrice) * item.qty;
-            
             subtotal += line;
             $list.append(`
                 <div class="summary-item">
@@ -357,15 +384,11 @@ jQuery(document).ready(function($){
             `);
         });
 
-        // Determine rates based on fulfillment type
         const discRate = isColl ? config.cDisc : config.dDisc;
         const activeFee = isColl ? config.cFee : config.dFee;
         const discAmt = (subtotal * discRate) / 100;
-        
-        // Final math: (Subtotal - Discount) + Fees + Tip
         const finalTotal = (subtotal - discAmt) + config.sFee + activeFee + config.bFee + tipVal;
 
-        // Update UI Values
         $('#valSub').text(subtotal.toFixed(2));
         $('#valDisc').text(discAmt.toFixed(2));
         $('#valFee').text(activeFee.toFixed(2));
@@ -375,16 +398,25 @@ jQuery(document).ready(function($){
 
     $('#mainCheckoutUI').on('submit', function(e) {
         e.preventDefault();
-        
-        const $btn = $('#mainSubmitBtn');
         const isColl = $('#typePickup').is(':checked');
-        const currentSubtotal = parseFloat($('#valSub').text());
-        const currentDiscAmt = parseFloat($('#valDisc').text());
+        const $postcodeField = $('#postcode');
+        const rawPostcode = $postcodeField.val().trim().toUpperCase();
+        const cleanPostcode = rawPostcode.replace(/\s+/g, '');
+        const allowedPrefixes = ['EN3', 'EN1', 'EN2', 'EN8', 'N9', 'EN7'];
 
+        if (!isColl) {
+            const hasValidPrefix = allowedPrefixes.some(prefix => cleanPostcode.startsWith(prefix));
+            if (cleanPostcode.length !== 6 || !hasValidPrefix) {
+                $postcodeField.css('border-color', 'var(--fd-red)');
+                alert("Please correct your postcode before ordering.");
+                $postcodeField.focus();
+                return false;
+            }
+        }
+
+        const $btn = $('#mainSubmitBtn');
         $btn.prop('disabled', true).text('PROCESSING...');
 
-        // Map UI IDs to Payload Keys
-        // NEW FIELDS ADDED: delivery_fee, collection_charge, delivery_discount, collection_discount
         const payload = {
             orderType: isColl ? 'collection' : 'delivery',
             paymentMethod: $('input[name="payment"]:checked').val(),
@@ -395,38 +427,30 @@ jQuery(document).ready(function($){
             building: $('#building').val().trim(),
             door_no: $('#door_no').val().trim(),
             road_name: $('#road_name').val().trim(),
-            postcode: $('#postcode').val().trim(),
+            postcode: rawPostcode,
             delivery_notes: $('#delivery_notes').val().trim(),
             kitchen_notes: notesFromMenu,
             scheduledTime: timeChoice,
             cart: orderItems,
-            
-            subtotal: currentSubtotal,
+            subtotal: parseFloat($('#valSub').text()),
             service_fee: config.sFee,
             bag_fee: config.bFee,
             tip: $('#tipInput').val() || 0,
-            
-            // LOGIC FOR NEW DATABASE COLUMNS
             delivery_charge: isColl ? 0 : config.dFee,
             collection_charge: isColl ? config.cFee : 0,
-            delivery_discount: isColl ? 0 : currentDiscAmt,
-            collection_discount: isColl ? currentDiscAmt : 0,
-            
+            delivery_discount: isColl ? 0 : parseFloat($('#valDisc').text()),
+            collection_discount: isColl ? parseFloat($('#valDisc').text()) : 0,
             total: $('#valGrand').text() 
         };
 
         $('#hidden_order_payload').val(JSON.stringify(payload));
-        
-        // Clear local storage ONLY after payload is generated
         localStorage.removeItem('fd_cart_save');
         localStorage.removeItem('fd_kitchen_notes');
-
         setTimeout(() => { $('#realSubmissionForm').submit(); }, 300);
     });
 
     $('input[name="orderType"]').on('change', updatePricing);
     $('#tipInput').on('input', updatePricing);
-    
     updatePricing();
 });
 </script>

@@ -20,7 +20,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['fd_register_nonce'])) 
         
         // UK Phone Validation Logic
         $phone_raw  = sanitize_text_field($_POST['phone']);
-        $phone      = preg_replace('/[^0-9]/', '', $phone_raw); // Remove non-digits
+        $phone      = preg_replace('/[^0-9]/', '', $phone_raw); 
         
         // New Address Fields
         $flat_no    = sanitize_text_field($_POST['flat_no']);
@@ -28,7 +28,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['fd_register_nonce'])) 
         $door_no    = sanitize_text_field($_POST['door_no']);
         $road_name  = sanitize_text_field($_POST['road_name']);
         $address_gen = sanitize_textarea_field($_POST['address']);
-        $postcode   = sanitize_text_field($_POST['postcode']);
+        
+        // Postcode Logic - Normalize (Upper case, no spaces)
+        $postcode_raw = sanitize_text_field($_POST['postcode']);
+        $postcode     = strtoupper(str_replace(' ', '', $postcode_raw));
+        $allowed_zones = ['EN3', 'EN1', 'EN2', 'EN8', 'N9', 'EN7'];
 
         // Validation
         if (username_exists($username)) $errors[] = "Username already taken.";
@@ -36,7 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['fd_register_nonce'])) 
         if (email_exists($email)) $errors[] = "This email is already registered.";
         if (strlen($password) < 6) $errors[] = "Password must be at least 6 characters.";
         
-        // Phone Validation (UK Format)
+        // Phone Validation
         if (empty($phone)) {
             $errors[] = "Phone number is required.";
         } elseif (strlen($phone) !== 11) {
@@ -45,28 +49,39 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['fd_register_nonce'])) 
             $errors[] = "UK Phone number must start with 0.";
         }
 
-        if (empty($postcode)) $errors[] = "Postcode is required.";
+        // Postcode Validation Logic
+        $is_allowed = false;
+        foreach ($allowed_zones as $zone) {
+            if (strpos($postcode, $zone) === 0) {
+                $is_allowed = true;
+                break;
+            }
+        }
+
+        if (empty($postcode)) {
+            $errors[] = "Postcode is required.";
+        } elseif (!$is_allowed) {
+            $errors[] = "Sorry, we do not deliver to this postcode area.";
+        } elseif (strlen($postcode) !== 6) {
+            $errors[] = "Postcode must be exactly 6 characters (e.g., EN31AA).";
+        }
 
         if (empty($errors)) {
             $user_id = wp_create_user($username, $password, $email);
             
             if (!is_wp_error($user_id)) {
-                // Update User Profile
                 wp_update_user([
                     'ID' => $user_id,
                     'display_name' => $full_name,
                     'first_name'   => $full_name
                 ]);
                 
-                // Store Advanced Fields in User Meta
                 update_user_meta($user_id, 'billing_phone', $phone);
                 update_user_meta($user_id, 'billing_postcode', $postcode);
                 
-                // Concatenate detailed address
                 $full_address_string = "Flat $flat_no, $building, Door $door_no, $road_name. $address_gen";
                 update_user_meta($user_id, 'billing_address_1', $full_address_string);
                 
-                // Individual Custom Meta
                 update_user_meta($user_id, 'fd_flat_no', $flat_no);
                 update_user_meta($user_id, 'fd_building', $building);
                 update_user_meta($user_id, 'fd_door_no', $door_no);
@@ -74,7 +89,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['fd_register_nonce'])) 
                 update_user_meta($user_id, 'fd_user_phone', $phone);
                 update_user_meta($user_id, 'fd_user_postcode', $postcode);
                 
-                // Auto-login
                 wp_set_current_user($user_id);
                 wp_set_auth_cookie($user_id);
                 
@@ -99,7 +113,9 @@ get_header(); ?>
     .form-control:focus { border-color: #d63638; box-shadow: 0 0 0 3px rgba(214, 54, 56, 0.1); outline: none; }
     .reg-btn { background: #d63638; color: #fff; border: none; width: 100%; padding: 15px; border-radius: 10px; font-weight: 700; font-size: 16px; margin-top: 20px; transition: 0.3s; cursor: pointer; }
     .reg-btn:hover { background: #b52a2c; transform: translateY(-2px); }
+    .reg-btn:disabled { background: #ccc; cursor: not-allowed; transform: none; }
     textarea.form-control { height: auto; }
+    #pc-live-error { color: #d63638; font-size: 11px; font-weight: 700; margin-top: 5px; display: none; }
 </style>
 
 <div class="reg-wrapper">
@@ -186,7 +202,8 @@ get_header(); ?>
                                     </div>
                                     <div class="col-md-4 mb-3">
                                         <label class="form-label">UK Postcode</label>
-                                        <input type="text" name="postcode" class="form-control" placeholder="SW1A 1AA" required>
+                                        <input type="text" id="regPostcode" name="postcode" class="form-control" placeholder="EN3 1AA" style="text-transform:uppercase" required>
+                                        <div id="pc-live-error"></div>
                                     </div>
                                 </div>
 
@@ -200,7 +217,7 @@ get_header(); ?>
                                     <input type="password" name="password" class="form-control" placeholder="••••••••" required>
                                 </div>
 
-                                <button type="submit" class="reg-btn">Create My Account</button>
+                                <button type="submit" id="regSubmitBtn" class="reg-btn">Create My Account</button>
                             </form>
 
                             <div class="text-center mt-4">
@@ -214,5 +231,43 @@ get_header(); ?>
         </div>
     </div>
 </div>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>
+jQuery(document).ready(function($) {
+    $('#regPostcode').on('input', function() {
+        const $el = $(this);
+        const $err = $('#pc-live-error');
+        const $btn = $('#regSubmitBtn');
+        
+        // Normalize: Uppercase and remove all spaces
+        const val = $el.val().trim().toUpperCase().replace(/\s+/g, '');
+        const allowed = ['EN3', 'EN1', 'EN2', 'EN8', 'N9', 'EN7'];
+        
+        if (val === "") {
+            $el.css('border-color', ''); 
+            $err.hide(); 
+            $btn.prop('disabled', false);
+            return;
+        }
+
+        const startMatch = allowed.some(p => val.startsWith(p));
+        
+        if (!startMatch) {
+            $el.css('border-color', '#d63638');
+            $err.text('We do not deliver to this area.').show();
+            $btn.prop('disabled', true);
+        } else if (val.length !== 6) {
+            $el.css('border-color', '#d63638');
+            $err.text('Must be 6 characters (e.g. EN31AA).').show();
+            $btn.prop('disabled', true);
+        } else {
+            $el.css('border-color', '#10b981'); 
+            $err.hide();
+            $btn.prop('disabled', false);
+        }
+    });
+});
+</script>
 
 <?php get_footer(); ?>
