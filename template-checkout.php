@@ -330,9 +330,9 @@ jQuery(document).ready(function($){
         if (!startMatch) {
             $el.css('border-color', '#d63638');
             $err.text('We do not deliver to this area.').show();
-        } else if (val.length !== 6) {
+        } else if (val.length > 6) {
             $el.css('border-color', '#d63638');
-            $err.text('Postcode must be exactly 6 characters.').show();
+            $err.text('Postcode cannot exceed 6 characters.').show();
         } else {
             $el.css('border-color', '#10b981'); // Valid
             $err.hide();

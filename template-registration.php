@@ -62,8 +62,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['fd_register_nonce'])) 
             $errors[] = "Postcode is required.";
         } elseif (!$is_allowed) {
             $errors[] = "Sorry, we do not deliver to this postcode area.";
-        } elseif (strlen($postcode) !== 6) {
-            $errors[] = "Postcode must be exactly 6 characters (e.g., EN31AA).";
+        } elseif (strlen($postcode) > 6) {
+            $errors[] = "Postcode cannot be more than 6 characters. (e.g., EN31AA).";
         }
 
         if (empty($errors)) {

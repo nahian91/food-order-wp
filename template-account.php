@@ -340,8 +340,8 @@ $u_addr  = get_user_meta($user_id, 'address', true);
             
             if (!match) {
                 $el.css('border-color', '#ef4444'); $err.text('Sorry, we do not deliver to this area.').show(); $('#btnUpdate').prop('disabled', true);
-            } else if (val.length !== 6) {
-                $el.css('border-color', '#ef4444'); $err.text('Must be exactly 6 characters.').show(); $('#btnUpdate').prop('disabled', true);
+            } else if (val.length > 6) {
+                $el.css('border-color', '#ef4444'); $err.text('Postcode cannot exceed 6 characters.').show(); $('#btnUpdate').prop('disabled', true);
             } else {
                 $el.css('border-color', '#10b981'); $err.hide(); $('#btnUpdate').prop('disabled', false);
             }

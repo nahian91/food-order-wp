@@ -379,3 +379,14 @@
 .afon-label-muted-small { display: block; margin-bottom: 8px; font-size: 10px; text-transform: uppercase; color: #8c8f94; font-weight: 700; }
 .afon-address-text { font-weight: 500; line-height: 1.5; font-size: 13px; color: #1d2327; margin: 0; }
 .afon-text-primary { color: #d63638; }
+
+
+.fd-action-btn.fd-delete-btn {
+  width: 5px;
+  height: 5px;
+  border: 0;
+  margin-top: 18px;
+}
+.fd-action-btn.fd-delete-btn span {
+  font-size: 7px;
+}
