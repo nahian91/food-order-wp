@@ -495,11 +495,84 @@ function fd_main_page(){
     </script>
     <?php
 }
-?>
 
-<style>
-/* Layout Container */
-.awesome-food-delivery {
+require_once get_template_directory() . '/inc/dashboard.php';
+require_once get_template_directory() . '/inc/orders.php';
+require_once get_template_directory() . '/inc/items.php';
+require_once get_template_directory() . '/inc/categories.php';
+//require_once get_template_directory() . '/inc/extras.php';
+require_once get_template_directory() . '/inc/report.php';
+require_once get_template_directory() . '/inc/customers.php';
+require_once get_template_directory() . '/inc/settings.php';
+require_once get_template_directory() . '/inc/frontend.php';
+
+add_action('admin_head', function() {
+    $screen = get_current_screen();
+
+    // Check if we are on your Food Delivery page
+    if($screen && $screen->id === 'toplevel_page_awesome_food_delivery') {
+        echo '<style>
+            /* Hide WP default admin UI */
+            #wpadminbar, /* top bar */
+            #adminmenu, #adminmenuback, #adminmenuwrap, /* left menu */
+            #wpfooter { display: none !important; }
+            
+            /* Make content full width */
+            #wpcontent, #wpbody-content { margin-left: 0 !important; padding: 0 !important; width: 100% !important; }
+            
+            body.wp-admin { background: #f1f1f1; }
+        </style>';
+    }
+});
+
+
+add_filter('login_redirect', function($redirect_to, $requested_redirect_to, $user) {
+
+    // Check if $user is a WP_User object
+    if( isset($user->roles) && is_array($user->roles) ) {
+
+        // You can target specific roles if you want
+        if( in_array('administrator', $user->roles) || in_array('editor', $user->roles) ) {
+            // Redirect to your Food Delivery page
+            return admin_url('admin.php?page=awesome_food_delivery');
+        }
+    }
+
+    // Default redirect for other users
+    return $redirect_to;
+}, 10, 3);
+
+/*--------------------------------------------------------------
+# 6. Integrated Admin Styles
+--------------------------------------------------------------*/
+add_action('admin_head', function() {
+    $screen = get_current_screen();
+
+    // Only load these styles on your specific Food Delivery dashboard
+    if ($screen && $screen->id === 'toplevel_page_awesome_food_delivery') {
+        ?>
+        <style>
+            /* Reset & WP Hide - Making it a true SaaS interface */
+            #wpadminbar, 
+            #adminmenu, 
+            #adminmenuback, 
+            #adminmenuwrap, 
+            #wpfooter { 
+                display: none !important; 
+            }
+            
+            #wpcontent, #wpbody-content { 
+                margin-left: 0 !important; 
+                padding: 0 !important; 
+                width: 100% !important; 
+            }
+            
+            body.wp-admin { 
+                background: #f1f1f1; 
+                overflow-x: hidden;
+            }
+
+            .awesome-food-delivery {
     display: flex;
     position: relative;
     transition: all 0.3s ease;
@@ -518,13 +591,13 @@ function fd_main_page(){
 
 .afd-left-tabs li a {
     display: block;
-    padding: 12px 20px;
-    color: #eee;
+    padding: 20px;
+    color: #111;
     text-decoration: none;
 }
 
 .afd-left-tabs li a.active {
-    background: #0073aa;
+    background: #e53935;
     color: #fff;
 }
 
@@ -574,52 +647,7 @@ function fd_main_page(){
 .afd-print #afd-toggle-sidebar {
     display: none !important;
 }
-</style>
-<?php
-
-require_once get_template_directory() . '/inc/dashboard.php';
-require_once get_template_directory() . '/inc/orders.php';
-require_once get_template_directory() . '/inc/items.php';
-require_once get_template_directory() . '/inc/categories.php';
-//require_once get_template_directory() . '/inc/extras.php';
-require_once get_template_directory() . '/inc/report.php';
-require_once get_template_directory() . '/inc/customers.php';
-require_once get_template_directory() . '/inc/settings.php';
-require_once get_template_directory() . '/inc/frontend.php';
-
-add_action('admin_head', function() {
-    $screen = get_current_screen();
-
-    // Check if we are on your Food Delivery page
-    if($screen && $screen->id === 'toplevel_page_awesome_food_delivery') {
-        echo '<style>
-            /* Hide WP default admin UI */
-            #wpadminbar, /* top bar */
-            #adminmenu, #adminmenuback, #adminmenuwrap, /* left menu */
-            #wpfooter { display: none !important; }
-            
-            /* Make content full width */
-            #wpcontent, #wpbody-content { margin-left: 0 !important; padding: 0 !important; width: 100% !important; }
-            
-            body.wp-admin { background: #f1f1f1; }
-        </style>';
+        </style>
+        <?php
     }
 });
-
-
-add_filter('login_redirect', function($redirect_to, $requested_redirect_to, $user) {
-
-    // Check if $user is a WP_User object
-    if( isset($user->roles) && is_array($user->roles) ) {
-
-        // You can target specific roles if you want
-        if( in_array('administrator', $user->roles) || in_array('editor', $user->roles) ) {
-            // Redirect to your Food Delivery page
-            return admin_url('admin.php?page=awesome_food_delivery');
-        }
-    }
-
-    // Default redirect for other users
-    return $redirect_to;
-}, 10, 3);
-

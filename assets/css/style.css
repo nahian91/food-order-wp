@@ -2882,20 +2882,7 @@ p {
 }
 
 .about-style-one-info .content {
-	margin-left: 150px;
 	position: relative;
-	padding-left: 50px;
-}
-
-.about-style-one-info .content::after {
-	position: absolute;
-	right: 100%;
-	top: 15px;
-	content: "";
-	height: 2px;
-	width: 100%;
-	border-top: 1px solid #cccccc;
-	z-index: -1;
 }
 
 .about-style-one-info .content p {

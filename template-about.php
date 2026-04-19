@@ -20,6 +20,15 @@ get_header();?>
     </div>
 </div>
 
+<?php 
+    $about_subtitle = get_field('about_subtitle', 'option');
+    $about_title = get_field('about_title', 'option');
+    $about_image = get_field('about_image', 'option');
+    $about_description = get_field('about_description', 'option');
+    $about_button_title = get_field('about_button_title', 'option');
+    $about_button_text = get_field('about_button_text', 'option');
+?>
+
     <!-- Start About
     ============================================= -->
     <div class="about-style-one-area default-padding">
@@ -27,15 +36,15 @@ get_header();?>
             <div class="row align-center">
                 <div class="col-lg-6">
                     <div class="thumb-style-one">
-                        <img class="wow fadeInUp" src="<?php echo get_template_directory_uri();?>/assets/img/about/1.jpg" alt="Image Not Found">
+                        <img class="wow fadeInUp" src="<?php echo esc_url($about_image['url']);?>" alt="<?php echo esc_html($about_title);?>">
                         <div class="contact-card-one wow fadeInLeft" data-wow-delay="200ms">
-                            <a href="tel:+442084432500">
+                            <a href="tel:<?php echo esc_attr($about_button_text);?>">
                                 <div class="icon">
                                     <i class="fa fa-phone"></i>
                                 </div>
                                 <div class="info">
-                                    <span>HOTLINE 24/7</span>
-                                    <h4>+442084432500</h4>
+                                    <span><?php echo esc_html($about_button_title);?></span>
+                                    <h4><?php echo esc_html($about_button_text);?></h4>
                                 </div>
                             </a>
                         </div>
@@ -43,13 +52,12 @@ get_header();?>
                 </div>
                 <div class="col-lg-5 offset-lg-1">
                     <div class="about-style-one-info">
-                        <h4 class="sub-heading">About Spice of India</h4>
-                        <h2 class="title split-text">A Journey Through the Heart of Authentic Indian Flavors</h2>
+                        <h4 class="sub-heading"><?php echo esc_html($about_subtitle);?></h4>
+                        <h2 class="title split-text"><?php echo esc_html($about_title);?></h2>
                         <div class="content mt-50">
                             <p class="split-text">
-                                Welcome to Spice of India, where every dish tells a story of tradition, passion, and the vibrant culture of the East. Located in the heart of the community, we are dedicated to bringing you the true essence of Indian culinary arts, prepared with the finest ingredients and a pinch of love.
+                                <?php echo esc_html($about_description);?>
                             </p>
-                            <p>At Spice of India, we believe that great food starts with authenticity. Our chefs draw inspiration from the diverse regions of India—from the robust, tandoori-grilled delights of the North to the aromatic, coconut-infused curries of the South. We don't just cook; we craft experiences.</p>
                         </div>
                     </div>
                 </div>
