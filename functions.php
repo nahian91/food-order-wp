@@ -427,7 +427,8 @@ function fd_main_page(){
         'extras'     => 'Extras',
         'reports'    => 'Reports',
         'customers'  => 'Customers',
-        'settings'   => 'Settings'
+        'settings'   => 'Settings',
+        'manual_order' => 'Add Manual Order', // Added this
     ];
 
     $active = $_GET['tab'] ?? 'orders';
@@ -469,6 +470,7 @@ function fd_main_page(){
                 case 'reports':    fd_reports_tab(); break;
                 case 'customers':  fd_customers_tab(); break;
                 case 'settings':   fd_settings_tab(); break;
+                case 'manual_order': fd_manual_order_tab(); break;
             }
             ?>
         </div>
@@ -505,6 +507,7 @@ require_once get_template_directory() . '/inc/report.php';
 require_once get_template_directory() . '/inc/customers.php';
 require_once get_template_directory() . '/inc/settings.php';
 require_once get_template_directory() . '/inc/frontend.php';
+require_once get_template_directory() . '/inc/manual.php';
 
 add_action('admin_head', function() {
     $screen = get_current_screen();
