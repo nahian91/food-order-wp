@@ -541,7 +541,7 @@ jQuery(document).ready(function($){
                 <div class="fd-v-row" data-vname="${v.name}" data-vprice="${v.price}">
                     <div class="fd-v-info">
                         <span class="fd-v-name">${v.name}</span>
-                        <span class="fd-v-price">+${config.currency}${parseFloat(v.price).toFixed(2)}</span>
+                        <span class="fd-v-price">${config.currency}${parseFloat(v.price).toFixed(2)}</span>
                     </div>
                     <div class="v-check"></div>
                 </div>
