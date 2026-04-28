@@ -514,33 +514,37 @@ jQuery(document).ready(function($){
     }
 
     function calculateModalTotal() {
-    if (!pendingItem) return;
-    
-    const $selectedRow = $('.fd-v-row.selected');
-    let displayPrice;
+        if (!pendingItem) return;
+        
+        const $selectedRow = $('.fd-v-row.selected');
+        let displayPrice;
 
-    if ($selectedRow.length > 0) {
-        // REPLACE: Show ONLY the extra price (e.g., £12.00)
-        displayPrice = parseFloat($selectedRow.data('vprice'));
-    } else {
-        // DEFAULT: Show the base price (e.g., £8.49)
-        displayPrice = parseFloat(pendingItem.price);
+        if ($selectedRow.length > 0) {
+            displayPrice = parseFloat($selectedRow.data('vprice'));
+        } else {
+            displayPrice = parseFloat(pendingItem.price);
+        }
+
+        const total = displayPrice * pendingItem.qty;
+        $('#vmodal-total-price').text(config.currency + total.toFixed(2));
     }
-
-    const total = displayPrice * pendingItem.qty;
-    $('#vmodal-total-price').text(config.currency + total.toFixed(2));
-}
 
     function openVModal(itemData, variants) {
         pendingItem = itemData;
         $('#vmodal-item-info').text(`${itemData.name} (Qty: ${itemData.qty})`);
         
+        // Disable Confirm Button initially until selection is made
+        $('#vmodal-confirm-btn')
+            .prop('disabled', true)
+            .text('Please Select an Option')
+            .css({'opacity': '0.5', 'cursor': 'not-allowed'});
+
         let list = $('#vmodal-options-list').empty();
         variants.forEach((v) => {
             list.append(`
                 <div class="fd-v-row" data-vname="${v.name}" data-vprice="${v.price}">
                     <div class="fd-v-info">
-                        <span class="fd-v-name">${v.name}</span>
+                        <span class="fd-v-name">${v.name}${v.img_url}</span>
                         <span class="fd-v-price">${config.currency}${parseFloat(v.price).toFixed(2)}</span>
                     </div>
                     <div class="v-check"></div>
@@ -548,20 +552,28 @@ jQuery(document).ready(function($){
             `);
         });
 
-        $('.fd-v-row').removeClass('selected'); // Reset selection
-        calculateModalTotal(); // Show base price initially
+        $('.fd-v-row').removeClass('selected');
+        calculateModalTotal(); 
         $('#fd-variant-modal').addClass('active');
     }
 
+    // Row selection logic
     $(document).on('click', '.fd-v-row', function() {
         $('.fd-v-row').removeClass('selected');
         $(this).addClass('selected');
+        
+        // Re-enable the confirm button
+        $('#vmodal-confirm-btn')
+            .prop('disabled', false)
+            .text('Confirm Selection')
+            .css({'opacity': '1', 'cursor': 'pointer'});
+
         calculateModalTotal();
     });
 
     $('#close-vmodal').on('click', function() { $('#fd-variant-modal').removeClass('active'); });
 
-    // Main Interaction
+    // Main Item Logic
     $(document).on('click', '.order-btn', function() {
         const $card = $(this).closest('.fd-food-card');
         const qty = parseInt($card.find('.fd-item-qty').text());
@@ -586,41 +598,36 @@ jQuery(document).ready(function($){
         }
     });
 
-   // --- 3. MODAL CONFIRM BUTTON ---
-$('#vmodal-confirm-btn').off('click').on('click', function() {
-    const $selected = $('.fd-v-row.selected');
-    
-    // Use Variant Price if selected, otherwise use 0 (which triggers Base Price in addToCart)
-    const vName = $selected.length ? $selected.data('vname') : '';
-    const vPrice = $selected.length ? parseFloat($selected.data('vprice')) : 0;
+    $('#vmodal-confirm-btn').off('click').on('click', function() {
+        const $selected = $('.fd-v-row.selected');
+        if ($selected.length === 0) return; // Safeguard
+        
+        const vName = $selected.data('vname');
+        const vPrice = parseFloat($selected.data('vprice'));
 
-    addToCart(pendingItem, vName, vPrice);
-    
-    $('#fd-variant-modal').removeClass('active');
-    resetCard($(`.fd-food-card[data-id="${pendingItem.id}"]`));
-});
-    // --- 2. ADD TO CART (PREVENT BASE + EXTRA SUM) ---
-function addToCart(item, vName, vPrice) {
-    // Check if this specific item/variant combo exists
-    const exist = cart.find(i => i.name === item.name && i.vName === vName);
-    
-    // Logic: If vPrice exists, that is our new base price. 
-    // We do NOT add item.price + vPrice.
-    let finalUnitPrice = vPrice > 0 ? vPrice : item.price;
+        addToCart(pendingItem, vName, vPrice);
+        
+        $('#fd-variant-modal').removeClass('active');
+        resetCard($(`.fd-food-card[data-id="${pendingItem.id}"]`));
+    });
 
-    if (exist) {
-        exist.qty += item.qty; 
-    } else {
-        cart.push({ 
-            name: item.name, 
-            price: finalUnitPrice, // The variant price BECOMES the price
-            qty: item.qty, 
-            vName: vName, 
-            vPrice: 0 // Set to 0 so updateCart() doesn't add it again
-        });
+    function addToCart(item, vName, vPrice) {
+        const exist = cart.find(i => i.name === item.name && i.vName === vName);
+        let finalUnitPrice = vPrice > 0 ? vPrice : item.price;
+
+        if (exist) {
+            exist.qty += item.qty; 
+        } else {
+            cart.push({ 
+                name: item.name, 
+                price: finalUnitPrice, 
+                qty: item.qty, 
+                vName: vName, 
+                vPrice: 0 
+            });
+        }
+        updateCart();
     }
-    updateCart();
-}
 
     function resetCard($card) {
         const $btn = $card.find('.order-btn');
@@ -632,11 +639,10 @@ function addToCart(item, vName, vPrice) {
         }, 800);
     }
 
-    // Helper Events
+    // Helper UI Events
     $(document).on('click', '.fd-item-plus', function() { let s = $(this).siblings('.fd-item-qty'); s.text(parseInt(s.text()) + 1); });
     $(document).on('click', '.fd-item-minus', function() { let s = $(this).siblings('.fd-item-qty'); let val = parseInt(s.text()); if (val > 0) s.text(val - 1); });
     
-    // Sidebar Controls
     $(document).on('click', '.fd-plus', function() { cart[$(this).data('index')].qty += 1; updateCart(); });
     $(document).on('click', '.fd-minus', function() { 
         const idx = $(this).data('index'); 
@@ -645,18 +651,15 @@ function addToCart(item, vName, vPrice) {
     });
     $(document).on('click', '.fd-delete', function() { cart.splice($(this).data('index'), 1); updateCart(); });
 
-    // Drawer Toggles
     $('#fd-open-cats').on('click', function() { $('#fd-cat-drawer, #fd-overlay').addClass('active'); });
     $('#fd-mobile-trigger').on('click', function() { $('#fd-cart-sidebar, #fd-overlay').addClass('active'); });
     $('#fd-close-cats, .fd-close-cart, #fd-overlay').on('click', function() { $('.fd-cat-drawer, .fd-cart-sidebar, #fd-overlay').removeClass('active'); });
 
-    // Search
     $('#fd-menu-search').on('keyup', function() {
         let val = $(this).val().toLowerCase();
         $('.fd-food-card').each(function() { $(this).toggle($(this).data('title').indexOf(val) > -1); });
     });
 
-    // Time Save
     $('input[name="order_type"], #fd-tip-amount, #fd-scheduled-time').on('change input', function() {
         if($(this).attr('id') === 'fd-scheduled-time') {
             localStorage.setItem('fd_scheduled_time', $(this).val());
@@ -671,12 +674,16 @@ function addToCart(item, vName, vPrice) {
         localStorage.setItem('fd_kitchen_notes', $('#fd-kitchen-notes').val());
         localStorage.setItem('fd_order_type', $('input[name="order_type"]:checked').val());
         localStorage.setItem('fd_tip_amount', $('#fd-tip-amount').val());
+        
         const isLoggedIn = <?php echo $is_logged_in; ?>;
-        if (isLoggedIn) { window.location.href = "<?php echo home_url('/checkout/'); ?>"; } 
-        else { window.location.href = "<?php echo $redirect_after_login; ?>"; }
+        if (isLoggedIn) { 
+            window.location.href = "<?php echo home_url('/checkout/'); ?>"; 
+        } else { 
+            window.location.href = "<?php echo $redirect_after_login; ?>"; 
+        }
     });
 
-    // Auto Category Selector & Mobile Header Text Update
+    // Observer for category navigation
     const observerOptions = { root: null, rootMargin: '-20% 0px -70% 0px', threshold: 0 };
     const observer = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
