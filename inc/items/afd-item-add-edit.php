@@ -30,6 +30,8 @@ function fd_add_edit_item_tab($edit_item_id = 0) {
         $desc   = wp_kses_post($_POST['fd_item_desc']);
         $price  = floatval($_POST['fd_item_price']);
         $cat    = intval($_POST['fd_item_cat']);
+
+        $item_code = sanitize_text_field($_POST['fd_item_code']);
         
         // Handle Dynamic Repeater Extras
         $repeater_extras = [];
@@ -63,6 +65,8 @@ function fd_add_edit_item_tab($edit_item_id = 0) {
 
         if ($edit_item_id) {
             update_post_meta($edit_item_id, 'price', $price);
+            update_post_meta($edit_item_id, 'fd_item_code', $item_code);
+            update_post_meta($edit_item_id, 'fd_serial_no', $serial_no);
             wp_set_post_terms($edit_item_id, [$cat], 'food_category');
             update_post_meta($edit_item_id, 'fd_item_extras_repeater', $repeater_extras);
             
@@ -81,6 +85,7 @@ function fd_add_edit_item_tab($edit_item_id = 0) {
     $title_val    = $item ? $item->post_title : '';
     $desc_val     = $item ? $item->post_content : '';
     $price_val    = $item ? get_post_meta($edit_item_id, 'price', true) : '';
+    $item_code_val = $item ? get_post_meta($edit_item_id, 'fd_item_code', true) : '';
     $cat_id       = $item ? (wp_get_post_terms($edit_item_id, 'food_category', ['fields' => 'ids'])[0] ?? 0) : 0;
     $img_id       = $item ? get_post_thumbnail_id($edit_item_id) : 0;
     $img_url      = $img_id ? wp_get_attachment_url($img_id) : '';
@@ -179,19 +184,26 @@ function fd_add_edit_item_tab($edit_item_id = 0) {
                     </div>
 
                     <div class="afd-card">
-                        <div class="afd-card-head"><h3>Configuration</h3></div>
-                        <div class="afd-card-body">
-                            <label class="afd-sidebar-label">Base Price (£)</label>
-                            <input type="number" step="0.01" name="fd_item_price" class="afd-header-input" style="font-size:16px; padding:10px; margin-bottom:20px;" value="<?php echo esc_attr($price_val); ?>" placeholder="0.00">
+    <div class="afd-card-head"><h3>Configuration</h3></div>
+    <div class="afd-card-body">
+        <div style="margin-bottom: 20px;">
+            <div>
+                <label class="afd-sidebar-label">Item Code</label>
+                <input type="text" name="fd_item_code" class="afd-header-input" style="font-size:14px; padding:8px; margin:0;" value="<?php echo esc_attr($item_code_val); ?>" placeholder="E.g. FD-01">
+            </div>
+        </div>
 
-                            <label class="afd-sidebar-label">Menu Category</label>
-                            <select name="fd_item_cat" style="width:100%; height:40px; border-radius:5px; border-color:var(--afd-border);">
-                                <?php foreach ($categories as $c) : ?>
-                                    <option value="<?php echo $c->term_id; ?>" <?php selected($cat_id, $c->term_id); ?>><?php echo $c->name; ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                    </div>
+        <label class="afd-sidebar-label">Base Price (£)</label>
+        <input type="number" step="0.01" name="fd_item_price" class="afd-header-input" style="font-size:16px; padding:10px; margin-bottom:20px;" value="<?php echo esc_attr($price_val); ?>" placeholder="0.00">
+
+        <label class="afd-sidebar-label">Menu Category</label>
+        <select name="fd_item_cat" style="width:100%; height:40px; border-radius:5px; border-color:var(--afd-border);">
+            <?php foreach ($categories as $c) : ?>
+                <option value="<?php echo $c->term_id; ?>" <?php selected($cat_id, $c->term_id); ?>><?php echo $c->name; ?></option>
+            <?php endforeach; ?>
+        </select>
+    </div>
+</div>
                 </div>
             </div>
 

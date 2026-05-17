@@ -2,13 +2,14 @@
 if (!defined('ABSPATH')) exit;
 
 /*--------------------------------------------------------------
-# Enqueue DataTable & AJAX Script
+# Enqueue DataTable & Media Scripts
 --------------------------------------------------------------*/
 add_action('admin_enqueue_scripts', function () {
     if (!isset($_GET['page']) || $_GET['page'] !== 'awesome_food_delivery') return;
 
     wp_enqueue_style('fd-datatable-css', 'https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css');
     wp_enqueue_script('fd-datatable-js', 'https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js', ['jquery'], null, true);
+    wp_enqueue_media();
 });
 
 /*--------------------------------------------------------------
@@ -37,7 +38,14 @@ function fd_category_list() {
         }
     }
 
-    $terms = get_terms(['taxonomy' => 'food_category', 'hide_empty' => false]);
+    // Fetch categories ordered by custom order meta
+    $terms = get_terms([
+        'taxonomy'   => 'food_category', 
+        'hide_empty' => false,
+        'meta_key'   => 'fd_category_order',
+        'orderby'    => 'meta_value_num',
+        'order'      => 'ASC'
+    ]);
     ?>
 
     <style>
@@ -64,6 +72,7 @@ function fd_category_list() {
         .fd-btn:hover { border-color: var(--res-primary); color: var(--res-primary); background: #fff9f9; }
         .fd-btn-danger:hover { color: #fff; border-color: var(--res-primary); background: var(--res-primary); }
         .fd-count-badge { background: #f0f0f1; color: #3c434a; font-weight: 700; font-size: 11px; padding: 3px 10px; border-radius: 12px; border: 1px solid #dcdcde; }
+        .fd-order-badge { background: #fff; color: var(--res-primary); border: 1px solid var(--res-primary); padding: 2px 8px; border-radius: 6px; font-weight: 700; }
     </style>
 
     <div class="wrap" style="margin-top: 20px;">
@@ -75,6 +84,7 @@ function fd_category_list() {
         <table id="fd-category-table" class="widefat">
             <thead>
                 <tr>
+                    <th width="60">Order</th>
                     <th width="80">Thumbnail</th>
                     <th>Category Name</th>
                     <th>Featured</th>
@@ -85,13 +95,15 @@ function fd_category_list() {
             <tbody>
             <?php if (!empty($terms) && !is_wp_error($terms)) : ?>
                 <?php foreach ($terms as $term) :
-                    $img_id = get_term_meta($term->term_id, 'fd_category_image', true);
+                    $img_id      = get_term_meta($term->term_id, 'fd_category_image', true);
                     $is_featured = get_term_meta($term->term_id, 'fd_is_featured', true);
+                    $order       = get_term_meta($term->term_id, 'fd_category_order', true) ?: '0';
                     
                     $edit_url   = admin_url("admin.php?page=$page_slug&tab=categories&sub=add&edit={$term->term_id}");
                     $delete_url = wp_nonce_url(admin_url("admin.php?page=$page_slug&tab=categories&sub=all&delete={$term->term_id}"), 'fd_delete_cat_' . $term->term_id);
                 ?>
                 <tr>
+                    <td><span class="fd-order-badge"><?php echo esc_html($order); ?></span></td>
                     <td>
                         <?php if ($img_id) : 
                             echo wp_get_attachment_image($img_id, [60, 60], false, ['class' => 'fd-cat-thumb']);
@@ -134,7 +146,11 @@ function fd_category_list() {
         // Initialize DataTable
         $('#fd-category-table').DataTable({
             pageLength: 10,
-            columnDefs: [{ orderable: false, targets: [0, 2, 4] }],
+            order: [[0, 'asc']], // Sort by Order column by default
+            columnDefs: [
+                { orderable: false, targets: [1, 3, 5] },
+                { type: 'num', targets: 0 } // Ensure Order column is numeric
+            ],
             dom: '<"top"f>rt<"bottom"ip><"clear">'
         });
 
