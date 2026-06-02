@@ -3183,6 +3183,7 @@ ul.meal-items li {
 	grid-template-columns: 1fr 5.5fr;
 	grid-column-gap: 30px;
 	align-items: center;
+	position: relative;
 }
 
 ul.meal-items.thumb-less li {

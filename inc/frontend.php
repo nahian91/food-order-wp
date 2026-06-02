@@ -69,33 +69,74 @@ $redirect_after_login = add_query_arg('redirect_to', home_url('/checkout/'), $cu
     }
 
     $items = get_posts([
-        'post_type'      => 'food_item',
-        'posts_per_page' => -1,
-        'post_status'    => 'publish',
-        'orderby'        => 'menu_order',
-        'order'          => 'ASC'
-    ]);
+    'post_type'      => 'food_item',
+    'posts_per_page' => -1,
+    'post_status'    => 'publish',
+    'orderby'        => 'menu_order',
+    'order'          => 'ASC'
+]);
 
-    if (!$items) return '<p>No food items found.</p>';
+if (!$items) return '<p>No food items found.</p>';
 
-    $items_by_cat = [];
-    foreach ($items as $item) {
-        $terms = wp_get_post_terms($item->ID, 'food_category');
-        $cat_name = !empty($terms) ? $terms[0]->name : 'Other';
-        $cat_slug = !empty($terms) ? $terms[0]->slug : 'other';
-        $cat_id   = !empty($terms) ? $terms[0]->term_id : 0;
+// 1. Fetch all categories first to establish sorting order
+$ordered_terms = get_terms([
+    'taxonomy'   => 'food_category',
+    'hide_empty' => false,
+]);
 
-        if (!isset($items_by_cat[$cat_slug])) {
-            $img_id = get_term_meta($cat_id, 'fd_category_image', true);
-            $image_url = $img_id ? wp_get_attachment_image_url($img_id, 'medium') : 'https://ui-avatars.com/api/?name=' . urlencode($cat_name) . '&background=fef2f2&color=d63638&bold=true';
-            $items_by_cat[$cat_slug] = [
-                'name'  => $cat_name,
-                'img'   => $image_url,
-                'items' => []
-            ];
-        }
-        $items_by_cat[$cat_slug]['items'][] = $item;
+// 2. Sort the terms handling missing/unset orders gracefully (missing drops to 9999)
+if (!is_wp_error($ordered_terms) && !empty($ordered_terms)) {
+    usort($ordered_terms, function($a, $b) {
+        $order_a = get_term_meta($a->term_id, 'fd_category_order', true);
+        $order_b = get_term_meta($b->term_id, 'fd_category_order', true);
+        
+        $val_a = ($order_a !== '' && $order_a !== false) ? intval($order_a) : 9999;
+        $val_b = ($order_b !== '' && $order_b !== false) ? intval($order_b) : 9999;
+        
+        return $val_a <=> $val_b;
+    });
+}
+
+// 3. Initialize the array with the sorted categories as keys
+$items_by_cat = [];
+if (!is_wp_error($ordered_terms) && !empty($ordered_terms)) {
+    foreach ($ordered_terms as $term) {
+        $img_id = get_term_meta($term->term_id, 'fd_category_image', true);
+        $image_url = $img_id ? wp_get_attachment_image_url($img_id, 'medium') : 'https://ui-avatars.com/api/?name=' . urlencode($term->name) . '&background=fef2f2&color=d63638&bold=true';
+        
+        $items_by_cat[$term->slug] = [
+            'name'  => $term->name,
+            'img'   => $image_url,
+            'items' => []
+        ];
     }
+}
+
+// 4. Group items inside their respective sorted categories
+foreach ($items as $item) {
+    $terms = wp_get_post_terms($item->ID, 'food_category');
+    $cat_slug = !empty($terms) ? $terms[0]->slug : 'other';
+
+    // Fallback if category was somehow skipped during term retrieval
+    if (!isset($items_by_cat[$cat_slug])) {
+        $cat_name = !empty($terms) ? $terms[0]->name : 'Other';
+        $cat_id   = !empty($terms) ? $terms[0]->term_id : 0;
+        $img_id   = $cat_id ? get_term_meta($cat_id, 'fd_category_image', true) : '';
+        $image_url = $img_id ? wp_get_attachment_image_url($img_id, 'medium') : 'https://ui-avatars.com/api/?name=' . urlencode($cat_name) . '&background=fef2f2&color=d63638&bold=true';
+        
+        $items_by_cat[$cat_slug] = [
+            'name'  => $cat_name,
+            'img'   => $image_url,
+            'items' => []
+        ];
+    }
+    $items_by_cat[$cat_slug]['items'][] = $item;
+}
+
+// 5. Filter out completely empty categories to keep the layout clean
+$items_by_cat = array_filter($items_by_cat, function($cat_data) {
+    return !empty($cat_data['items']);
+});
 
     ob_start(); ?>
 
@@ -254,57 +295,68 @@ body:not(.admin-bar) .fd-mobile-cat-header {
         </div>
 
         <div class="fd-menu-section">
-            <?php foreach ($items_by_cat as $slug => $cat_data) : ?>
-                <div id="cat-<?php echo esc_attr($slug); ?>" class="food-menu">
-                    <h4 class="sub-heading"><?php echo esc_html($cat_data['name']); ?></h4>
-                    <ul class="meal-items">
-                        <?php foreach ($cat_data['items'] as $item) : 
-                            $price = get_post_meta($item->ID, 'price', true) ?: '0.00';
-                            $img = get_the_post_thumbnail_url($item->ID, 'medium') ?: 'https://via.placeholder.com/130';
-                            $variants = get_post_meta($item->ID, 'fd_item_extras_repeater', true);
-                            $has_variants = !empty($variants) ? 'true' : 'false';
-                        ?>
-                            <li class="fd-food-card" 
-                                data-id="<?php echo $item->ID; ?>"
-                                data-title="<?php echo esc_attr(strtolower($item->post_title)); ?>" 
-                                data-base-price="<?php echo esc_attr($price); ?>"
-                                data-has-variants="<?php echo $has_variants; ?>">
+    <?php foreach ($items_by_cat as $slug => $cat_data) : ?>
+        <div id="cat-<?php echo esc_attr($slug); ?>" class="food-menu">
+            <h4 class="sub-heading"><?php echo esc_html($cat_data['name']); ?></h4>
+            <ul class="meal-items">
+                <?php foreach ($cat_data['items'] as $item) : 
+                    $price = get_post_meta($item->ID, 'price', true) ?: '0.00';
+                    $img = get_the_post_thumbnail_url($item->ID, 'medium') ?: 'https://via.placeholder.com/130';
+                    $variants = get_post_meta($item->ID, 'fd_item_extras_repeater', true);
+                    $has_variants = !empty($variants) ? 'true' : 'false';
+                    
+                    // Fetch the Item No (Code)
+                    $item_code = get_post_meta($item->ID, 'fd_item_code', true);
+                ?>
+                    <li class="fd-food-card" 
+                        data-id="<?php echo $item->ID; ?>"
+                        data-title="<?php echo esc_attr(strtolower($item->post_title)); ?>" 
+                        data-base-price="<?php echo esc_attr($price); ?>"
+                        data-has-variants="<?php echo $has_variants; ?>">
+                        <span class="fd-item-code-badge" style="position: absolute; top: 0; left: 0; background: #d63638; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">
+                                    <?php echo esc_html($item_code); ?>
+                                </span>
+                        <div class="thumbnail" style="position: relative;">
+                            <img src="<?php echo esc_url($img); ?>" alt="Food">
+                            <?php if (!empty($item_code)) : ?>
                                 
-                                <div class="thumbnail"><img src="<?php echo esc_url($img); ?>" alt="Food"></div>
-                                <div class="content">
-                                    <div class="top">
-                                        <div class="title"><h4><?php echo esc_html($item->post_title); ?></h4></div>
-                                        <div class="price"><span><?php echo $currency . number_format((float)$price, 2); ?></span></div>
-                                    </div>
-                                    <div class="bottom"><p><?php echo wp_kses_post($item->post_content); ?></p></div>
+                            <?php endif; ?>
+                        </div>
 
-                                    <?php if (!empty($variants)) : ?>
-                                        <div class="fd-hidden-variants" style="display:none;">
-                                            <?php foreach ($variants as $v) : ?>
-                                                <div class="v-data" data-vname="<?php echo esc_attr($v['name']); ?>" data-vprice="<?php echo esc_attr($v['price']); ?>"></div>
-                                            <?php endforeach; ?>
-                                        </div>
-                                    <?php endif; ?>
+                        <div class="content">
+                            <div class="top">
+                                <div class="title"><h4><?php echo esc_html($item->post_title); ?></h4></div>
+                                <div class="price"><span><?php echo $currency . number_format((float)$price, 2); ?></span></div>
+                            </div>
+                            <div class="bottom"><p><?php echo wp_kses_post($item->post_content); ?></p></div>
 
-                                    <div class="order-btn-align">
-                                        <div class="fd-qty-selector">
-                                            <button class="fd-item-minus"><span class="dashicons dashicons-minus"></span></button>
-                                            <span class="fd-item-qty">0</span> 
-                                            <button class="fd-item-plus"><span class="dashicons dashicons-plus"></span></button>
-                                        </div>
-                                        <button class="order-btn" 
-                                                data-name="<?php echo esc_attr($item->post_title); ?>" 
-                                                data-price="<?php echo esc_attr($price); ?>">
-                                            Add +
-                                        </button>
-                                    </div>
+                            <?php if (!empty($variants)) : ?>
+                                <div class="fd-hidden-variants" style="display:none;">
+                                    <?php foreach ($variants as $v) : ?>
+                                        <div class="v-data" data-vname="<?php echo esc_attr($v['name']); ?>" data-vprice="<?php echo esc_attr($v['price']); ?>"></div>
+                                    <?php endforeach; ?>
                                 </div>
-                            </li>
-                        <?php endforeach; ?>
-                    </ul>
-                </div>
-            <?php endforeach; ?>
+                            <?php endif; ?>
+
+                            <div class="order-btn-align">
+                                <div class="fd-qty-selector">
+                                    <button class="fd-item-minus"><span class="dashicons dashicons-minus"></span></button>
+                                    <span class="fd-item-qty">0</span> 
+                                    <button class="fd-item-plus"><span class="dashicons dashicons-plus"></span></button>
+                                </div>
+                                <button class="order-btn" 
+                                        data-name="<?php echo esc_attr($item->post_title); ?>" 
+                                        data-price="<?php echo esc_attr($price); ?>">
+                                    Add +
+                                </button>
+                            </div>
+                        </div>
+                    </li>
+                <?php endforeach; ?>
+            </ul>
         </div>
+    <?php endforeach; ?>
+</div>
 
         <div class="fd-cart-sidebar" id="fd-cart-sidebar">
             <div class="fd-mobile-cart-header">
