@@ -38,32 +38,30 @@ function fd_category_list() {
         }
     }
 
-    // Fetch categories ordered by custom order meta
+    // Fetch all categories (Removed the breaking array orderby)
     $terms = get_terms([
         'taxonomy'   => 'food_category', 
         'hide_empty' => false,
-        'meta_key'   => 'fd_category_order',
-        'orderby'    => 'meta_value_num',
-        'order'      => 'ASC'
     ]);
+
+    // Apply sorting in PHP to ensure stable order (1, 2, 3...)
+    if (!is_wp_error($terms) && !empty($terms)) {
+        usort($terms, function($a, $b) {
+            $order_a = intval(get_term_meta($a->term_id, 'fd_category_order', true));
+            $order_b = intval(get_term_meta($b->term_id, 'fd_category_order', true));
+            return ($order_a === $order_b) ? strcmp($a->name, $b->name) : ($order_a - $order_b);
+        });
+    }
     ?>
 
     <style>
-        :root { 
-            --res-primary: #d63638; 
-            --res-dark: #1d2327;    
-            --res-border: #ccd0d4; 
-        }
-
-        /* Modern Toggle Switch */
+        :root { --res-primary: #d63638; --res-dark: #1d2327; --res-border: #ccd0d4; }
         .fd-switch { position: relative; display: inline-block; width: 40px; height: 22px; }
         .fd-switch input { opacity: 0; width: 0; height: 0; }
         .fd-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px; }
         .fd-slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
         input:checked + .fd-slider { background-color: var(--res-primary); }
         input:checked + .fd-slider:before { transform: translateX(18px); }
-
-        /* Table Styles */
         #fd-category-table { border: 1px solid var(--res-border); border-radius: 8px; overflow: hidden; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,.05); }
         #fd-category-table thead th { background: #fafafa; padding: 15px; font-weight: 700; color: #50575e; border-bottom: 2px solid #f0f0f1; text-transform: uppercase; font-size: 11px; }
         #fd-category-table td { padding: 15px; vertical-align: middle; border-bottom: 1px solid #f0f0f1; }
@@ -93,76 +91,63 @@ function fd_category_list() {
                 </tr>
             </thead>
             <tbody>
-            <?php if (!empty($terms) && !is_wp_error($terms)) : ?>
-                <?php foreach ($terms as $term) :
-                    $img_id      = get_term_meta($term->term_id, 'fd_category_image', true);
-                    $is_featured = get_term_meta($term->term_id, 'fd_is_featured', true);
-                    $order       = get_term_meta($term->term_id, 'fd_category_order', true) ?: '0';
-                    
-                    $edit_url   = admin_url("admin.php?page=$page_slug&tab=categories&sub=add&edit={$term->term_id}");
-                    $delete_url = wp_nonce_url(admin_url("admin.php?page=$page_slug&tab=categories&sub=all&delete={$term->term_id}"), 'fd_delete_cat_' . $term->term_id);
-                ?>
-                <tr>
-                    <td><span class="fd-order-badge"><?php echo esc_html($order); ?></span></td>
-                    <td>
-                        <?php if ($img_id) : 
-                            echo wp_get_attachment_image($img_id, [60, 60], false, ['class' => 'fd-cat-thumb']);
-                        else : ?>
-                            <div class="fd-cat-no-img" style="width:54px;height:54px;background:#f6f7f7;display:flex;align-items:center;justify-content:center;border-radius:8px;"><span class="dashicons dashicons-format-image"></span></div>
-                        <?php endif; ?>
-                    </td>
-
-                    <td>
-                        <strong style="font-size:15px; color: var(--res-dark);"><?php echo esc_html($term->name); ?></strong><br>
-                        <code style="background:none; padding:0; color: #a7aaad;">slug: <?php echo esc_html($term->slug); ?></code>
-                    </td>
-
-                    <td>
-                        <label class="fd-switch">
-                            <input type="checkbox" class="fd-featured-toggle" data-id="<?php echo $term->term_id; ?>" <?php checked($is_featured, '1'); ?>>
-                            <span class="fd-slider"></span>
-                        </label>
-                    </td>
-
-                    <td><span class="fd-count-badge"><?php echo $term->count; ?></span></td>
-
-                    <td style="text-align: right;">
-                        <a class="fd-btn" href="<?php echo esc_url($edit_url); ?>">
-                            <span class="dashicons dashicons-edit"></span> Edit
-                        </a>
-                        <a class="fd-btn fd-btn-danger" href="<?php echo esc_url($delete_url); ?>" onclick="return confirm('Delete this category?')">
-                            <span class="dashicons dashicons-trash" style="color: var(--res-primary);"></span> Delete
-                        </a>
-                    </td>
-                </tr>
-                <?php endforeach; ?>
-            <?php endif; ?>
+                <?php if (!empty($terms) && !is_wp_error($terms)) : ?>
+                    <?php foreach ($terms as $term) :
+                        $img_id      = get_term_meta($term->term_id, 'fd_category_image', true);
+                        $is_featured = get_term_meta($term->term_id, 'fd_is_featured', true);
+                        $order       = get_term_meta($term->term_id, 'fd_category_order', true) ?: '0';
+                        $edit_url    = admin_url("admin.php?page=$page_slug&tab=categories&sub=add&edit={$term->term_id}");
+                        $delete_url  = wp_nonce_url(admin_url("admin.php?page=$page_slug&tab=categories&sub=all&delete={$term->term_id}"), 'fd_delete_cat_' . $term->term_id);
+                    ?>
+                    <tr>
+                        <td><span class="fd-order-badge"><?php echo esc_html($order); ?></span></td>
+                        <td>
+                            <?php if ($img_id) : 
+                                echo wp_get_attachment_image($img_id, [60, 60], false, ['class' => 'fd-cat-thumb']);
+                            else : ?>
+                                <div class="fd-cat-no-img" style="width:54px;height:54px;background:#f6f7f7;display:flex;align-items:center;justify-content:center;border-radius:8px;"><span class="dashicons dashicons-format-image"></span></div>
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <strong style="font-size:15px; color: var(--res-dark);"><?php echo esc_html($term->name); ?></strong><br>
+                            <code style="background:none; padding:0; color: #a7aaad;">slug: <?php echo esc_html($term->slug); ?></code>
+                        </td>
+                        <td>
+                            <label class="fd-switch">
+                                <input type="checkbox" class="fd-featured-toggle" data-id="<?php echo $term->term_id; ?>" <?php checked($is_featured, '1'); ?>>
+                                <span class="fd-slider"></span>
+                            </label>
+                        </td>
+                        <td><span class="fd-count-badge"><?php echo $term->count; ?></span></td>
+                        <td style="text-align: right;">
+                            <a class="fd-btn" href="<?php echo esc_url($edit_url); ?>"><span class="dashicons dashicons-edit"></span> Edit</a>
+                            <a class="fd-btn fd-btn-danger" href="<?php echo esc_url($delete_url); ?>" onclick="return confirm('Delete this category?')"><span class="dashicons dashicons-trash" style="color: var(--res-primary);"></span> Delete</a>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
             </tbody>
         </table>
     </div>
 
     <script>
     jQuery(document).ready(function ($) {
-        // Initialize DataTable
         $('#fd-category-table').DataTable({
             pageLength: 10,
-            order: [[0, 'asc']], // Sort by Order column by default
+            order: [[0, 'asc']],
             columnDefs: [
                 { orderable: false, targets: [1, 3, 5] },
-                { type: 'num', targets: 0 } // Ensure Order column is numeric
+                { type: 'num', targets: 0 }
             ],
             dom: '<"top"f>rt<"bottom"ip><"clear">'
         });
 
-        // Toggle Featured AJAX
         $(document).on('change', '.fd-featured-toggle', function() {
             const termId = $(this).data('id');
-            const isChecked = $(this).is(':checked');
-            
             $.post(ajaxurl, {
                 action: 'fd_toggle_featured',
                 term_id: termId,
-                featured: isChecked
+                featured: $(this).is(':checked')
             }, function(response) {
                 if(!response.success) alert('Failed to update status');
             });
