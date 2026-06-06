@@ -295,11 +295,21 @@ body:not(.admin-bar) .fd-mobile-cat-header {
         </div>
 
         <div class="fd-menu-section">
-    <?php foreach ($items_by_cat as $slug => $cat_data) : ?>
+    <?php foreach ($items_by_cat as $slug => $cat_data) : 
+        
+        // --- ADD THIS SORTING LOGIC ---
+        usort($cat_data['items'], function($a, $b) {
+            $code_a = (int) get_post_meta($a->ID, 'fd_item_code', true);
+            $code_b = (int) get_post_meta($b->ID, 'fd_item_code', true);
+            return $code_a - $code_b;
+        });
+        // ------------------------------
+        
+    ?>
         <div id="cat-<?php echo esc_attr($slug); ?>" class="food-menu">
             <h4 class="sub-heading"><?php echo esc_html($cat_data['name']); ?></h4>
             <ul class="meal-items">
-                <?php foreach ($cat_data['items'] as $item) : 
+                <?php foreach ($cat_data['items'] as $item) :
                     $price = get_post_meta($item->ID, 'price', true) ?: '0.00';
                     $img = get_the_post_thumbnail_url($item->ID, 'medium') ?: 'https://via.placeholder.com/130';
                     $variants = get_post_meta($item->ID, 'fd_item_extras_repeater', true);
